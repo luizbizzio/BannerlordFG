@@ -1,0 +1,28 @@
+BannerlordFG third-party notices
+================================
+
+BannerlordFG original source code:
+  Copyright (C) 2026 Luiz Bizzio
+  SPDX-License-Identifier: GPL-3.0-only
+  See LICENSE for the full license text.
+
+Harmony (0Harmony.dll):
+  Copyright (c) Andreas Pardeike
+  MIT License. The original notice is included in
+  HARMONY_LICENSE.txt in this mod folder.
+  Source: https://github.com/pardeike/Harmony
+  Build dependency: Lib.Harmony 2.3.3 from official NuGet.
+
+OptiScaler:
+  Source: https://github.com/optiscaler/OptiScaler
+  Third-party project using GPL-3.0 and potentially additional licenses
+  for its included components. Refer to the exact release's license notices.
+  This BannerlordFG release ZIP does not include OptiScaler binaries.
+  Its installer downloads an official pinned build on the player's PC.
+  A download does not change the license of the separate OptiScaler files.
+
+Mount & Blade II: Bannerlord:
+  Game and TaleWorlds assemblies belong to their respective owners.
+  This repository does not include game DLLs or game assets.
+  BannerlordFG is an independent community mod and is not affiliated
+  with TaleWorlds, OptiScaler or Harmony.

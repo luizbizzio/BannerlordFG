@@ -1,0 +1,24 @@
+# Build products and downloaded dependencies
+**/obj/
+**/bin/Debug/
+**/*.pdb
+*.user
+BannerlordFG-v*-Vortex.zip
+*.nupkg
+*.7z
+*.zip
+# Keep the required placeholder, never commit game/mod binaries.
+Module/BannerlordFG/bin/Win64_Shipping_Client/*
+!Module/BannerlordFG/bin/Win64_Shipping_Client/BUILD_REQUIRED.txt
+!Module/BannerlordFG/bin/Win64_Shipping_Client/BannerlordFG.Helper.cmd
+deps/Harmony/0Harmony.dll
+
+# Local tests, build caches and editor files
+.pytest_cache/
+__pycache__/
+*.py[cod]
+.venv/
+.vs/
+.vscode/
+.idea/
+*.log

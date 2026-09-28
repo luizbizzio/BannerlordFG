@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Module>
+  <Name value="BannerlordFG" />
+  <Id value="BannerlordFG" />
+  <Version value="v1.0.0" />
+  <SingleplayerModule value="true" />
+  <MultiplayerModule value="false" />
+  <Official value="false" />
+  <!-- Native is part of Bannerlord's mandatory base load. No external mod dependencies. -->
+  <DependedModules />
+  <SubModules>
+    <SubModule>
+      <Name value="BannerlordFG" />
+      <DLLName value="BannerlordFG.dll" />
+      <SubModuleClassType value="BannerlordFG.SubModule" />
+      <Tags>
+        <Tag key="DedicatedServerType" value="none" />
+        <Tag key="IsNoRenderModeElement" value="false" />
+      </Tags>
+    </SubModule>
+  </SubModules>
+  <Xmls />
+</Module>

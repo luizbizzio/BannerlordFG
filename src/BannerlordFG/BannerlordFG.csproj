@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Release</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{A4325F9D-C8A1-44DB-9C68-6CD4AB30E92C}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>BannerlordFG</RootNamespace>
+    <AssemblyName>BannerlordFG</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <LangVersion>latest</LangVersion>
+    <OutputPath>..\..\Module\BannerlordFG\bin\Win64_Shipping_Client\</OutputPath>
+    <WarningLevel>4</WarningLevel>
+    <PlatformTarget>x64</PlatformTarget>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(BannerlordDir)' == ''">
+    <BannerlordDir>$(ProgramFilesX86)\Steam\steamapps\common\Mount &amp; Blade II Bannerlord</BannerlordDir>
+  </PropertyGroup>
+  <PropertyGroup>
+    <GameBin>$(BannerlordDir)\bin\Win64_Shipping_Client</GameBin>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml" />
+    <Reference Include="TaleWorlds.DotNet"><HintPath>$(GameBin)\TaleWorlds.DotNet.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="TaleWorlds.MountAndBlade"><HintPath>$(GameBin)\TaleWorlds.MountAndBlade.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="TaleWorlds.Library"><HintPath>$(GameBin)\TaleWorlds.Library.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="TaleWorlds.Localization"><HintPath>$(GameBin)\TaleWorlds.Localization.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="TaleWorlds.Core"><HintPath>$(GameBin)\TaleWorlds.Core.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="TaleWorlds.Engine"><HintPath>$(GameBin)\TaleWorlds.Engine.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="TaleWorlds.MountAndBlade.ViewModelCollection"><HintPath>$(GameBin)\TaleWorlds.MountAndBlade.ViewModelCollection.dll</HintPath><Private>False</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>$(MSBuildProjectDirectory)\..\..\deps\Harmony\0Harmony.dll</HintPath><Private>False</Private></Reference>
+    <Compile Include="SubModule.cs" />
+    <Compile Include="Core\FgSettings.cs" />
+    <Compile Include="Core\OptiProfile.cs" />
+    <Compile Include="Core\OptiLiveHotkeys.cs" />
+    <Compile Include="Core\GameGraphicsBridge.cs" />
+    <Compile Include="Core\Locale.cs" />
+    <Compile Include="Core\FgController.cs" />
+    <Compile Include="Core\NativeMenuContract.cs" />
+    <Compile Include="Core\NativePerformancePatch.cs" />
+    <Compile Include="Core\FgMenuOptions.cs" />
+    <Compile Include="Core\NativeFpsCounter.cs" />
+    <Compile Include="Core\NativeUpscalingLock.cs" />
+    <Compile Include="Core\NativeUnlimitedLimiter.cs" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <Target Name="VerifyGameDlls" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(GameBin)\TaleWorlds.MountAndBlade.dll')" Text="Bannerlord assemblies not found. Set /p:BannerlordDir to the actual game root folder." />
+  </Target>
+</Project>
