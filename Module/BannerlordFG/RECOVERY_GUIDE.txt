@@ -1,0 +1,53 @@
+BannerlordFG v1.0.1 - Recovery guide
+====================================
+
+WHEN TO USE THIS
+Use these steps only if the normal in-game OptiScaler uninstall fails,
+or if the in-game message asks you to recover the installation.
+
+STEP 1 - CLOSE THE GAME
+Save your progress. Close Bannerlord and the Bannerlord launcher.
+Do not delete the BannerlordFG folder or its backups yet.
+
+STEP 2 - OPEN POWERSHELL
+Open Windows PowerShell. Go to your game folder's
+Modules\BannerlordFG folder. For example:
+
+  cd "C:\Program Files (x86)\Steam\steamapps\common\Mount & Blade II Bannerlord\Modules\BannerlordFG"
+
+Your Steam library path may be different. You can copy the folder path
+from Windows File Explorer.
+
+STEP 3 - RUN RECOVERY
+Run:
+
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\UNINSTALL_WINDOWS.ps1"
+
+The script checks that the game is closed. It then runs the included
+maintenance helper to remove only the OptiScaler files owned by the mod.
+Follow the prompt. If Windows asks for admin permission, review it before
+approving. Do not run Bannerlord during recovery.
+
+STEP 4 - CHECK THE RESULT
+If the script reports success, check the log at:
+
+  %LOCALAPPDATA%\BannerlordFG\first-run.log
+
+If it reports an error, DO NOT delete the module, manifests, backups,
+or remaining graphics files. Keep the logs and the original files to
+investigate the error before you try again.
+
+For more information, also check:
+
+  %LOCALAPPDATA%\BannerlordFG\maintenance-host.log
+
+COMMON ISSUES
+- A game process is still open: fully exit the game and try again.
+- Script or helper is missing: restore the complete mod ZIP and retry.
+- Unknown or modified graphics files: stop. The mod protects these files
+  to avoid deleting files installed by another tool or another mod.
+- OptiScaler files or backups are missing: read the log before changing
+  anything manually.
+
+This script is only for recovery. The normal uninstall is in the game's
+Options > Performance > Frame Generation > OptiScaler > Uninstall menu.

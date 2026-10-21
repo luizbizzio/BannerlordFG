@@ -10,7 +10,7 @@ set "SOURCE=%ROOT%Module\BannerlordFG"
 set "OUT=%SOURCE%\bin\Win64_Shipping_Client"
 set "TARGET=%MODULES%\BannerlordFG"
 set "HARMONY=%ROOT%deps\Harmony\0Harmony.dll"
-set "ARCHIVE=%ROOT%BannerlordFG-v1.0.0.zip"
+set "ARCHIVE=%ROOT%BannerlordFG-v1.0.1.zip"
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 set "TMPBUILD=%TEMP%\BannerlordFG-build-%RANDOM%-%RANDOM%"
 set "OLD_ROTATED="
@@ -231,7 +231,7 @@ echo.
 if /I "%~1"=="--deploy-only" (
   echo SUCCESS: Previously compiled BannerlordFG archive installed.
 ) else (
-  echo SUCCESS: BannerlordFG v1.0.0 compiled and installed.
+  echo SUCCESS: BannerlordFG v1.0.1 compiled and installed.
 )
 echo Installed: "%TARGET%"
 echo standalone ZIP: "%ARCHIVE%"
@@ -383,7 +383,7 @@ exit /b 0
 
 :deploy_existing_archive
 if "%~2"=="" (
-  set "ERROR_MSG=Missing ZIP path. Usage: BUILD_WINDOWS.cmd --deploy-only ""C:\path\BannerlordFG-v1.0.0.zip"""
+  set "ERROR_MSG=Missing ZIP path. Usage: BUILD_WINDOWS.cmd --deploy-only ""C:\path\BannerlordFG-v1.0.1.zip"""
   goto :fail
 )
 set "ARCHIVE=%~2"

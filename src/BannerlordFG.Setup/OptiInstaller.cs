@@ -18,10 +18,10 @@ namespace BannerlordFG.Setup
     /// <summary>Pinned official-release downloader; no third-party DLLs are bundled.</summary>
     internal static class OptiInstaller
     {
-        internal const string Tag = "nightly-20260926";
-        internal const string AssetName = "OptiScaler_v10.0.0-pre1_20260926.7z";
-        // Independent hash verified against the GitHub release metadata (2026-09-27).
-        internal const string PinnedSha256 = "464e2ecc5dab477e940186959a7fdee64880f61c63f52ff0f516e5502bc74e94";
+        internal const string Tag = "nightly-20261016";
+        internal const string AssetName = "OptiScaler_v10.0.0-pre1_20261016.7z";
+        // Pinned hash recovered from the official v1.0.1 release binary (nightly-20261016).
+        internal const string PinnedSha256 = "09149a5b17514a0594faf612467267c62ed8851dbc1dde0ade6763f1152e600f";
         internal const string ReleasePage = "https://github.com/optiscaler/OptiScaler-nightly/releases/tag/" + Tag;
         private const string Api = "https://api.github.com/repos/optiscaler/OptiScaler-nightly/releases/tags/" + Tag;
         private const string AssetUrlPrefix = "https://github.com/optiscaler/OptiScaler-nightly/releases/download/" + Tag + "/";

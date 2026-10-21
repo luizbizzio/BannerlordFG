@@ -14,4 +14,7 @@ if (Get-Process -Name Bannerlord,Bannerlord.Native -ErrorAction SilentlyContinue
     throw 'Bannerlord is still running. Nothing was removed.'
 }
 & $helper --uninstall-closed-game --gamebin $bin
-Write-Host "Check $env:LOCALAPPDATA\BannerlordFG\first-run.log for the result." -ForegroundColor Cyan
+if ($LASTEXITCODE -ne 0) {
+    throw "BannerlordFG recovery failed (exit code $LASTEXITCODE). Check the logs in $env:LOCALAPPDATA\BannerlordFG. Do not delete the module or backup files."
+}
+Write-Host "Recovery completed. Check $env:LOCALAPPDATA\BannerlordFG\first-run.log for details." -ForegroundColor Green

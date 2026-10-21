@@ -1,4 +1,4 @@
-BannerlordFG v1.0.0 - Player instructions
+BannerlordFG v1.0.1 - Player instructions
 =======================================
 
 INSTALL
@@ -20,18 +20,23 @@ backend must be available for Frame Generation to work.
 - Show FPS Counter: On / Off (OptiScaler's post-FG overlay).
 After initial setup, FG and FPS-counter changes can be requested live when
 the graphics backend is ready. Some backend changes may require a relaunch.
+The FG switch shows the last state requested by the mod, not proof that
+OptiScaler is generating frames. Check the OptiScaler overlay to confirm.
 The native Bannerlord FPS counter can require one relaunch to disappear
 if it was enabled before installing the mod.
 
 UNINSTALL
 Preferred: Options > Performance > Frame Generation > OptiScaler > Uninstall.
 Follow the on-screen prompts. In case recovery is needed, close the game
-and run UNINSTALL_WINDOWS.ps1 before removing the BannerlordFG folder.
+and run UNINSTALL_WINDOWS.ps1 with PowerShell before removing the
+BannerlordFG folder. Read RECOVERY_GUIDE.txt for exact steps.
 
 NOTES
 - Windows / DirectX 11 / single-player. This is an experimental release.
 - Frame Generation increases displayed frames, not game simulation speed.
   Some hardware may show visual artifacts or additional latency.
+- On AMD or Intel GPUs, use DLSS Quality as Bannerlord's input option
+  after installation, even if OptiScaler uses FSR for upscaling.
 - OptiScaler files are downloaded separately and are not inside this ZIP.
 - Logs and recovery backups: %LOCALAPPDATA%\BannerlordFG
 

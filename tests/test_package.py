@@ -13,7 +13,7 @@ class PackageChecks(unittest.TestCase):
     def test_submodule_declares_correct_dll_and_version(self):
         r = ET.parse(MODULE/'SubModule.xml').getroot()
         self.assertEqual(r.find('Id').attrib['value'], 'BannerlordFG')
-        self.assertEqual(r.find('Version').attrib['value'], 'v1.0.0')
+        self.assertEqual(r.find('Version').attrib['value'], 'v1.0.1')
         self.assertEqual(r.find('SubModules/SubModule/DLLName').attrib['value'], 'BannerlordFG.dll')
         self.assertEqual(r.find('MultiplayerModule').attrib['value'], 'false')
 
@@ -30,8 +30,8 @@ class PackageChecks(unittest.TestCase):
         self.assertEqual([str(p) for p in MODULE.rglob('*') if p.suffix.lower() in {'.dll','.exe','.addon64'}], [])
 
     def test_release_asset_is_pinned_7z_and_not_zip(self):
-        self.assertIn('OptiScaler_v10.0.0-pre1_20260926.7z',CODE)
-        self.assertIn('464e2ecc5dab477e940186959a7fdee64880f61c63f52ff0f516e5502bc74e94',CODE)
+        self.assertIn('OptiScaler_v10.0.0-pre1_20261016.7z',CODE)
+        self.assertIn('09149a5b17514a0594faf612467267c62ed8851dbc1dde0ade6763f1152e600f',CODE)
         self.assertIn('pkg.Sha256.Equals(PinnedSha256',CODE)
         self.assertIn('tar.exe',CODE)
         self.assertIn('RunTar(tar, "-tf',CODE)
@@ -59,7 +59,7 @@ class PackageChecks(unittest.TestCase):
     def test_build_script_has_correct_msbuild_discovery(self):
         script=(ROOT/'BUILD_WINDOWS.cmd').read_text()
         self.assertIn('-prerelease -products * -find',script)
-        self.assertIn('BannerlordFG-v1.0.0.zip',script)
+        self.assertIn('BannerlordFG-v1.0.1.zip',script)
         self.assertIn('BannerlordFG.Maintenance.dll', script)
         self.assertIn('BannerlordFG.Helper.cmd', script)
 

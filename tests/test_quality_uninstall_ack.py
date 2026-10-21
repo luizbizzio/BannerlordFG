@@ -1,4 +1,4 @@
-"""v1.0.0 no-EXE regression checks. Integration on Windows remains mandatory."""
+"""v1.0.1 no-EXE regression checks. Integration on Windows remains mandatory."""
 from pathlib import Path
 p=Path(__file__).resolve().parents[1]
 def read(path): return (p/path).read_text(encoding='utf-8')

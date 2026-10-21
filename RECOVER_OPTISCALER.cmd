@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
-rem Run after BUILD_WINDOWS.cmd deployed v1.0.0 Does not download or reinstall anything.
+rem Run after BUILD_WINDOWS.cmd deployed v1.0.1 Does not download or reinstall anything.
 set "GAME=C:\Program Files (x86)\Steam\steamapps\common\Mount & Blade II Bannerlord"
 set "GAMEBIN=%GAME%\bin\Win64_Shipping_Client"
 set "HELPER=%GAME%\Modules\BannerlordFG\bin\Win64_Shipping_Client\BannerlordFG.Helper.cmd"

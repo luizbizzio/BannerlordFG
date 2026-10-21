@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 namespace BannerlordFG.Core
 {
     /// <summary>
-    /// The nightly-20260926 INI contract. Backend selection is NEXT-LAUNCH;
+    /// The nightly-20261016 INI contract. Backend selection is NEXT-LAUNCH;
     /// OptiScaler's documented FG and FPS overlay hotkeys are runtime controls.
     /// </summary>
     public static class OptiProfile

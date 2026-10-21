@@ -54,5 +54,5 @@ def test_manifest_removal_requires_all_owned_files_gone():
     assert 'Manifest retained: unrecognized or modified tracked files require manual review:' in INSTALL
 
 def test_archive_version_bumped():
-    assert 'v1.0.0' in (ROOT/'Module/BannerlordFG/SubModule.xml').read_text()
-    assert 'v1.0.0' in (ROOT/'BUILD_WINDOWS.cmd').read_text()
+    assert 'v1.0.1' in (ROOT/'Module/BannerlordFG/SubModule.xml').read_text()
+    assert 'v1.0.1' in (ROOT/'BUILD_WINDOWS.cmd').read_text()

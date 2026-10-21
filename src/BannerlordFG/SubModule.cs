@@ -917,7 +917,7 @@ namespace BannerlordFG
                 catch (Exception ex)
                 {
                     Log("Uninstall confirmation unavailable: " + ex);
-                    ShowInstallFeedback("OptiScaler uninstall", "Close Bannerlord and run RECOVER_OPTISCALER.cmd from the source folder.");
+                    ShowInstallFeedback("OptiScaler uninstall", "Close Bannerlord; run UNINSTALL_WINDOWS.ps1. Follow RECOVERY_GUIDE.txt.");
                 }
                 return;
             }

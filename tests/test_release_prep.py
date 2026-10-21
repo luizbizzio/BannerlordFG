@@ -27,7 +27,7 @@ def test_repository_contains_no_distributed_third_party_or_game_binaries():
 def test_version_and_module_identity():
     xml = ElementTree.parse(ROOT / "Module/BannerlordFG/SubModule.xml")
     module = xml.getroot()
-    assert module.find("Version").attrib["value"] == "v1.0.0"
+    assert module.find("Version").attrib["value"] == "v1.0.1"
     assert module.find("Id").attrib["value"] == "BannerlordFG"
     assert module.find("SubModules/SubModule/DLLName").attrib["value"] == "BannerlordFG.dll"
 
@@ -49,4 +49,4 @@ def test_windows_build_script_uses_msbuild_and_generates_release_archive():
     assert "Microsoft Visual Studio" in build
     assert "MSBuild.exe" in build
     assert "src\\BannerlordFG\\BannerlordFG.csproj" in build
-    assert "BannerlordFG-v1.0.0.zip" in build
+    assert "BannerlordFG-v1.0.1.zip" in build

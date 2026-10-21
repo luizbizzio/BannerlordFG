@@ -2,7 +2,7 @@
 
 ![BannerlordFG](assets/heading.png)
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/luizbizzio/BannerlordFG) ![Windows](https://img.shields.io/badge/platform-Windows-0078D4) ![DX11](https://img.shields.io/badge/API-DirectX%2011-FF0000) [![GPLv3](https://img.shields.io/badge/license-GPL--3.0--only-green)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.0.1-blue)](https://github.com/luizbizzio/BannerlordFG) ![Windows](https://img.shields.io/badge/platform-Windows-0078D4) ![DX11](https://img.shields.io/badge/API-DirectX%2011-FF0000) [![GPLv3](https://img.shields.io/badge/license-GPL--3.0--only-green)](LICENSE)
 
 **2x Frame Generation for Mount & Blade II: Bannerlord, built into the game's Performance menu.**
 
@@ -151,7 +151,7 @@ BannerlordFG keeps a manifest of the OptiScaler files it installs and checks the
 
 **Logs and backups:** `%LOCALAPPDATA%\BannerlordFG`
 
-**Normal uninstall:** **Options → Performance → Frame Generation → OptiScaler → Uninstall**. Follow the prompts before deleting the mod folder. For recovery, close the game and use `Modules/BannerlordFG/UNINSTALL_WINDOWS.ps1` or the repository's [`RECOVER_OPTISCALER.cmd`](RECOVER_OPTISCALER.cmd).
+**Normal uninstall:** **Options → Performance → Frame Generation → OptiScaler → Uninstall**. Follow the prompts before deleting the mod folder. For recovery, close Bannerlord and follow [`RECOVERY_GUIDE.txt`](Module/BannerlordFG/RECOVERY_GUIDE.txt). The packaged recovery script is `Modules/BannerlordFG/UNINSTALL_WINDOWS.ps1`.
 
 When [reporting a bug](https://github.com/luizbizzio/BannerlordFG/issues), include the mod version, game version, GPU and driver, reproduction steps, and relevant logs. Remove personal information first; see [SECURITY.md](SECURITY.md) for private vulnerability reports.
 
@@ -159,7 +159,7 @@ When [reporting a bug](https://github.com/luizbizzio/BannerlordFG/issues), inclu
 
 Requires an installed copy of Bannerlord, **Visual Studio 2022 Build Tools / MSBuild**, and the **.NET Framework 4.7.2 targeting pack**. With the game closed, update the `GAME` path in [`BUILD_WINDOWS.cmd`](BUILD_WINDOWS.cmd) if needed and run it as administrator.
 
-The script downloads the official Harmony dependency, compiles `BannerlordFG.dll` and `BannerlordFG.Maintenance.dll`, packages `BannerlordFG-v1.0.0.zip`, and deploys the build to the configured game directory. The Python source-contract tests **do not** replace a Windows build or an in-game test.
+The script downloads the official Harmony dependency, compiles `BannerlordFG.dll` and `BannerlordFG.Maintenance.dll`, packages `BannerlordFG-v1.0.1.zip`, and deploys the build to the configured game directory. The Python source-contract tests **do not** replace a Windows build or an in-game test.
 
 ## ❤️ Credits and license
 
