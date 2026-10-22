@@ -27,13 +27,14 @@ def test_repository_contains_no_distributed_third_party_or_game_binaries():
 def test_version_and_module_identity():
     xml = ElementTree.parse(ROOT / "Module/BannerlordFG/SubModule.xml")
     module = xml.getroot()
-    assert module.find("Version").attrib["value"] == "v1.0.1"
+    assert module.find("Version").attrib["value"] == "v1.0.2"
     assert module.find("Id").attrib["value"] == "BannerlordFG"
     assert module.find("SubModules/SubModule/DLLName").attrib["value"] == "BannerlordFG.dll"
 
-def test_manifest_status_is_snapshotted_until_next_game_launch():
+def test_manifest_status_is_cached_and_negative_recheck_throttled():
     code = read("src/BannerlordFG/SubModule.cs")
-    assert "if (_managedStateInitialized) return _cachedManagedInstall;" in code
+    assert "DateTime.UtcNow < _nextManagedInstallProbeUtc" in code
+    assert "DateTime.UtcNow.AddSeconds(2)" in code
     assert "_managedStateInitialized = true;" in code
     assert 'File.Exists(manifest) && File.Exists(ini) && File.Exists(dxgi)' in code
 
@@ -49,4 +50,4 @@ def test_windows_build_script_uses_msbuild_and_generates_release_archive():
     assert "Microsoft Visual Studio" in build
     assert "MSBuild.exe" in build
     assert "src\\BannerlordFG\\BannerlordFG.csproj" in build
-    assert "BannerlordFG-v1.0.1.zip" in build
+    assert "BannerlordFG-v1.0.2.zip" in build

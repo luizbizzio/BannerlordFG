@@ -26,3 +26,7 @@ Mount & Blade II: Bannerlord:
   This repository does not include game DLLs or game assets.
   BannerlordFG is an independent community mod and is not affiliated
   with TaleWorlds, OptiScaler or Harmony.
+
+SharpCompress 0.50.5 (managed 7z/LZMA extraction), MIT License:
+https://github.com/adamhathcock/sharpcompress
+The Windows build also restores transitive NuGet runtime dependencies.

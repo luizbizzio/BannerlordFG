@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
-rem Pure CMD build. Windows 10/11 provides curl.exe and tar.exe.
+rem Pure CMD build. tar.exe here handles ZIP packaging, NOT the OptiScaler 7z.
 rem Requires VS 2022 Build Tools + MSBuild + .NET Framework 4.7.2 targeting pack.
 set "ROOT=%~dp0"
 set "GAME=C:\Program Files (x86)\Steam\steamapps\common\Mount & Blade II Bannerlord"
@@ -10,7 +10,7 @@ set "SOURCE=%ROOT%Module\BannerlordFG"
 set "OUT=%SOURCE%\bin\Win64_Shipping_Client"
 set "TARGET=%MODULES%\BannerlordFG"
 set "HARMONY=%ROOT%deps\Harmony\0Harmony.dll"
-set "ARCHIVE=%ROOT%BannerlordFG-v1.0.1.zip"
+set "ARCHIVE=%ROOT%BannerlordFG-v1.0.2.zip"
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 set "TMPBUILD=%TEMP%\BannerlordFG-build-%RANDOM%-%RANDOM%"
 set "OLD_ROTATED="
@@ -80,22 +80,48 @@ if errorlevel 1 (
   goto :fail
 )
 echo [3/5] Compiling maintenance DLL (no setup EXE)...
-"%MSBUILD%" "%ROOT%src\BannerlordFG.Setup\BannerlordFG.Setup.csproj" /t:Rebuild /p:Configuration=Release /v:minimal
+rem PackageReference uses NuGet; restore SharpCompress and transitive runtime dependencies.
+"%MSBUILD%" "%ROOT%src\BannerlordFG.Setup\BannerlordFG.Setup.csproj" /restore /t:Rebuild /p:Configuration=Release /v:minimal
 if errorlevel 1 (
   set "ERROR_MSG=Maintenance DLL compilation failed; current installation untouched"
   goto :fail
 )
+rem Legacy net472 projects do not reliably copy transitive PackageReference DLLs.
+rem The .NET maintenance host loads our DLL from this folder, so every
+rem runtime dependency must be next to it before creating/deploying the ZIP.
+set "NUGET_ROOT=%NUGET_PACKAGES%"
+if not defined NUGET_ROOT set "NUGET_ROOT=%USERPROFILE%\.nuget\packages"
+rem Pre-set an actionable failure if CALL cannot locate this subroutine.
+set "ERROR_MSG=Cannot invoke copy_runtime_dep. Check that BUILD_WINDOWS.cmd uses Windows CRLF line endings"
+call :copy_runtime_dep "system.memory" "4.6.0" "net462" "System.Memory.dll"
+if errorlevel 1 goto :fail
+call :copy_runtime_dep "system.buffers" "4.6.0" "net462" "System.Buffers.dll"
+if errorlevel 1 goto :fail
+call :copy_runtime_dep "system.numerics.vectors" "4.6.0" "net462" "System.Numerics.Vectors.dll"
+if errorlevel 1 goto :fail
+call :copy_runtime_dep "system.runtime.compilerservices.unsafe" "6.1.0" "net462" "System.Runtime.CompilerServices.Unsafe.dll"
+if errorlevel 1 goto :fail
+call :copy_runtime_dep "system.threading.tasks.extensions" "4.5.4" "net461" "System.Threading.Tasks.Extensions.dll"
+if errorlevel 1 goto :fail
 copy /Y "%HARMONY%" "%OUT%\0Harmony.dll" >nul
 if errorlevel 1 (
   set "ERROR_MSG=Failed to copy Harmony to compiled module"
   goto :fail
 )
-for %%F in (BannerlordFG.dll BannerlordFG.Maintenance.dll 0Harmony.dll) do if not exist "%OUT%\%%F" (
+for %%F in (BannerlordFG.dll BannerlordFG.Maintenance.dll 0Harmony.dll SharpCompress.dll Microsoft.Bcl.AsyncInterfaces.dll System.Text.Encoding.CodePages.dll System.Memory.dll System.Buffers.dll System.Numerics.Vectors.dll System.Runtime.CompilerServices.Unsafe.dll System.Threading.Tasks.Extensions.dll) do if not exist "%OUT%\%%F" (
   set "ERROR_MSG=Missing compiled module file: %%F"
   goto :fail
 )
 if not exist "%OUT%\BannerlordFG.Helper.cmd" (
   set "ERROR_MSG=Missing CMD maintenance helper"
+  goto :fail
+)
+rem Validate actual .NET assembly identities and dependency resolution using the
+rem same Windows managed runtime host the installed mod runs. File presence alone is insufficient.
+echo [RUNTIME PREFLIGHT] Checking managed dependency loading...
+call "%OUT%\BannerlordFG.Helper.cmd" --verify-runtime
+if errorlevel 1 (
+  set "ERROR_MSG=Maintenance runtime preflight failed. Inspect maintenance-host.log before deploying"
   goto :fail
 )
 if exist "%OUT%\BUILD_REQUIRED.txt" del /Q "%OUT%\BUILD_REQUIRED.txt"
@@ -118,7 +144,7 @@ if errorlevel 1 (
   goto :fail
 )
 :validate_staged_module
-for %%F in (BannerlordFG.dll BannerlordFG.Maintenance.dll 0Harmony.dll) do if not exist "%TMPBUILD%\stage\BannerlordFG\bin\Win64_Shipping_Client\%%F" (
+for %%F in (BannerlordFG.dll BannerlordFG.Maintenance.dll 0Harmony.dll SharpCompress.dll Microsoft.Bcl.AsyncInterfaces.dll System.Text.Encoding.CodePages.dll System.Memory.dll System.Buffers.dll System.Numerics.Vectors.dll System.Runtime.CompilerServices.Unsafe.dll System.Threading.Tasks.Extensions.dll) do if not exist "%TMPBUILD%\stage\BannerlordFG\bin\Win64_Shipping_Client\%%F" (
   set "ERROR_MSG=Generated standalone ZIP is missing %%F"
   goto :fail
 )
@@ -168,7 +194,7 @@ if errorlevel 8 (
   set "ERROR_MSG=New module copy failed. See deploy.log in temporary build directory"
   goto :rollback
 )
-for %%F in (BannerlordFG.dll BannerlordFG.Maintenance.dll 0Harmony.dll) do if not exist "%TARGET%\bin\Win64_Shipping_Client\%%F" (
+for %%F in (BannerlordFG.dll BannerlordFG.Maintenance.dll 0Harmony.dll SharpCompress.dll Microsoft.Bcl.AsyncInterfaces.dll System.Text.Encoding.CodePages.dll System.Memory.dll System.Buffers.dll System.Numerics.Vectors.dll System.Runtime.CompilerServices.Unsafe.dll System.Threading.Tasks.Extensions.dll) do if not exist "%TARGET%\bin\Win64_Shipping_Client\%%F" (
   set "ERROR_MSG=Deployed module is missing %%F"
   goto :rollback
 )
@@ -181,7 +207,7 @@ if not exist "%TARGET%\SubModule.xml" (
   goto :rollback
 )
 rem Verify copied binaries byte-for-byte, even when ROBOCOPY returns success.
-for %%F in (BannerlordFG.dll BannerlordFG.Maintenance.dll 0Harmony.dll) do (
+for %%F in (BannerlordFG.dll BannerlordFG.Maintenance.dll 0Harmony.dll SharpCompress.dll Microsoft.Bcl.AsyncInterfaces.dll System.Text.Encoding.CodePages.dll System.Memory.dll System.Buffers.dll System.Numerics.Vectors.dll System.Runtime.CompilerServices.Unsafe.dll System.Threading.Tasks.Extensions.dll) do (
   fc /B "%TMPBUILD%\stage\BannerlordFG\bin\Win64_Shipping_Client\%%F" "%TARGET%\bin\Win64_Shipping_Client\%%F" > "%TMPBUILD%\verify-%%F.log" 2>&1
   if errorlevel 1 (
     set "ERROR_MSG=Deployed %%F differs from compiled artifact"
@@ -231,7 +257,7 @@ echo.
 if /I "%~1"=="--deploy-only" (
   echo SUCCESS: Previously compiled BannerlordFG archive installed.
 ) else (
-  echo SUCCESS: BannerlordFG v1.0.1 compiled and installed.
+  echo SUCCESS: BannerlordFG v1.0.2 compiled and installed.
 )
 echo Installed: "%TARGET%"
 echo standalone ZIP: "%ARCHIVE%"
@@ -383,7 +409,7 @@ exit /b 0
 
 :deploy_existing_archive
 if "%~2"=="" (
-  set "ERROR_MSG=Missing ZIP path. Usage: BUILD_WINDOWS.cmd --deploy-only ""C:\path\BannerlordFG-v1.0.1.zip"""
+  set "ERROR_MSG=Missing ZIP path. Usage: BUILD_WINDOWS.cmd --deploy-only ""C:\path\BannerlordFG-v1.0.2.zip"""
   goto :fail
 )
 set "ARCHIVE=%~2"
@@ -449,6 +475,21 @@ if errorlevel 1 (
 )
 if not exist "%HARMONY%" (
   set "ERROR_MSG=Harmony DLL missing after copy"
+  exit /b 1
+)
+exit /b 0
+
+:copy_runtime_dep
+rem PackageReferences above make NuGet restore these exact assets. Fail safely
+rem if a package is absent, rather than generating a ZIP that breaks at runtime.
+set "DEP_SOURCE=%NUGET_ROOT%\%~1\%~2\lib\%~3\%~4"
+if not exist "%DEP_SOURCE%" (
+  set "ERROR_MSG=NuGet dependency missing: %~4. Check MSBuild restore and NUGET_PACKAGES"
+  exit /b 1
+)
+copy /Y "%DEP_SOURCE%" "%OUT%\%~4" >nul
+if errorlevel 1 (
+  set "ERROR_MSG=Cannot bundle NuGet dependency: %~4"
   exit /b 1
 )
 exit /b 0

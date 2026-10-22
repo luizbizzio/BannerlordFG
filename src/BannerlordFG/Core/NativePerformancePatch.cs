@@ -62,6 +62,7 @@ namespace BannerlordFG.Core
         private int _providerHitCount;
         private int _attachHitCount;
         private int _refreshSelectionsOnNextTick;
+        private int _refreshManagedInstallOnNextTick;
         private Harmony _harmony;
 
         private NativePerformancePatch(FgController controller, Func<bool> isInstalled,
@@ -186,7 +187,7 @@ namespace BannerlordFG.Core
                     postfix: new HarmonyMethod(typeof(NativePerformancePatch), nameof(PerformanceGetterPostfix)));
                 instance._harmony.Patch(vmRefresh,
                     postfix: new HarmonyMethod(typeof(NativePerformancePatch), nameof(OptionsRefreshPostfix)));
-                log("Harmony native Performance v1.0.1 installed: Off/On FG selector, silent fixed 2x and two internal live-control keys. Native limiter preserved.");
+                log("Harmony native Performance v1.0.2 installed: Off/On FG selector, silent fixed 2x and two internal live-control keys. Native limiter preserved.");
                 return true;
             }
             catch (Exception ex)
@@ -213,6 +214,8 @@ namespace BannerlordFG.Core
             {
                 if (p._refreshSelectionsOnNextTick > 0 && --p._refreshSelectionsOnNextTick == 0)
                     p.RefreshSelectionRows();
+                if (p._refreshManagedInstallOnNextTick > 0 && --p._refreshManagedInstallOnNextTick == 0)
+                    p.RefreshManagedInstallRows();
             }
             catch (Exception ex) { p.Error("deferred native UI update failed", ex); }
         }
@@ -220,6 +223,11 @@ namespace BannerlordFG.Core
         internal static void ScheduleSelectionRefresh()
         {
             if (_active != null) _active._refreshSelectionsOnNextTick = 2;
+        }
+
+        internal static void ScheduleManagedInstallRefresh()
+        {
+            if (_active != null) _active._refreshManagedInstallOnNextTick = 2;
         }
 
         private void RememberOwner(OptionGroupVM group, OptionsVM vm)
@@ -264,6 +272,28 @@ namespace BannerlordFG.Core
             foreach (var reference in _liveGroupRefs)
                 if (reference.TryGetTarget(out OptionGroupVM group)) current.Add(group);
             return current.ToArray();
+        }
+
+        private void RefreshManagedInstallRows()
+        {
+            if (!_isInstalled()) return;
+            foreach (var group in LiveGroups())
+            {
+                if (group?.Options == null || !TryGetOwner(group, out OptionsVM vm)) continue;
+                // This is our visual-only group. Do not touch any vanilla group
+                // or saved game option; rebuilding it updates an already-open
+                // Performance menu without asking the player to restart again.
+                bool showsInstall = group.Options.Any(row =>
+                    row?.GetOptionData()?.GetOptionType() is string id && id == IdInstall);
+                if (!showsInstall) continue;
+                try
+                {
+                    group.Options.Clear();
+                    PopulateVisualRows(group, vm, "post-install state refresh");
+                    _log("Native Performance Install/Uninstall control refreshed after first relaunch.");
+                }
+                catch (Exception ex) { Error("post-install native rows refresh failed", ex); }
+            }
         }
 
         private void RefreshSelectionRows()

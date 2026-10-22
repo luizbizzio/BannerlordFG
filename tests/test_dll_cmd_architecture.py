@@ -48,8 +48,8 @@ def test_package_requires_cmd_and_dll_without_shipping_setup_exe():
     assert 'BannerlordFG.Helper.cmd' in BUILD
     assert 'BannerlordFG.Setup.exe' not in (MOD/'bin/Win64_Shipping_Client').as_posix() # template has none
     assert list(MOD.rglob('*.exe')) == []
-    assert 'BannerlordFG-v1.0.1.zip' in BUILD
-    assert ET.parse(MOD/'SubModule.xml').getroot().find('Version').get('value') == 'v1.0.1'
+    assert 'BannerlordFG-v1.0.2.zip' in BUILD
+    assert ET.parse(MOD/'SubModule.xml').getroot().find('Version').get('value') == 'v1.0.2'
 
 def test_launcher_does_not_block_graphics_maintenance():
     root = Path(__file__).resolve().parents[1]

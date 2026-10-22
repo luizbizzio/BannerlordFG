@@ -1,4 +1,4 @@
-BannerlordFG v1.0.1 - Player instructions
+BannerlordFG v1.0.2 - Player instructions
 =======================================
 
 INSTALL
@@ -38,6 +38,8 @@ NOTES
 - On AMD or Intel GPUs, use DLSS Quality as Bannerlord's input option
   after installation, even if OptiScaler uses FSR for upscaling.
 - OptiScaler files are downloaded separately and are not inside this ZIP.
+- The installer extracts the official 7z with SharpCompress, without Windows tar.exe.
+- Keep the extractor DLLs in the mod's bin folder when installing.
 - Logs and recovery backups: %LOCALAPPDATA%\BannerlordFG
 
 Source and license: https://github.com/luizbizzio/BannerlordFG

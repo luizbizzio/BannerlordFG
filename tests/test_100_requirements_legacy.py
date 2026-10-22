@@ -7,9 +7,9 @@ def source(rel): return (ROOT / rel).read_text(encoding='utf-8')
 
 
 def test_version_100_everywhere_that_is_a_release_identifier():
-    assert ET.parse(ROOT / 'Module/BannerlordFG/SubModule.xml').getroot().find('Version').get('value') == 'v1.0.1'
-    assert 'BannerlordFG-v1.0.1.zip' in source('BUILD_WINDOWS.cmd')
-    assert 'SUCCESS: BannerlordFG v1.0.1 compiled and installed.' in source('BUILD_WINDOWS.cmd')
+    assert ET.parse(ROOT / 'Module/BannerlordFG/SubModule.xml').getroot().find('Version').get('value') == 'v1.0.2'
+    assert 'BannerlordFG-v1.0.2.zip' in source('BUILD_WINDOWS.cmd')
+    assert 'SUCCESS: BannerlordFG v1.0.2 compiled and installed.' in source('BUILD_WINDOWS.cmd')
 
 
 def test_title_and_multiplier_button_with_actual_callback():
@@ -89,5 +89,5 @@ def test_disabling_fg_does_not_switch_upscaler_off_mid_session():
 
 def test_version_does_not_change_the_pinned_third_party_build():
     xml = ET.parse(ROOT/'Module/BannerlordFG/SubModule.xml').getroot()
-    assert xml.find('Version').get('value') == 'v1.0.1'
+    assert xml.find('Version').get('value') == 'v1.0.2'
     assert 'nightly-20261016' in source('src/BannerlordFG.Setup/OptiInstaller.cs')

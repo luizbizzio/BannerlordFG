@@ -2,7 +2,7 @@
 
 ![BannerlordFG](assets/heading.png)
 
-[![Version](https://img.shields.io/badge/version-1.0.1-blue)](https://github.com/luizbizzio/BannerlordFG) ![Windows](https://img.shields.io/badge/platform-Windows-0078D4) ![DX11](https://img.shields.io/badge/API-DirectX%2011-FF0000) [![GPLv3](https://img.shields.io/badge/license-GPL--3.0--only-green)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.0.2-blue)](https://github.com/luizbizzio/BannerlordFG) ![Windows](https://img.shields.io/badge/platform-Windows-0078D4) ![DX11](https://img.shields.io/badge/API-DirectX%2011-FF0000) [![GPLv3](https://img.shields.io/badge/license-GPL--3.0--only-green)](LICENSE)
 
 **2x Frame Generation for Mount & Blade II: Bannerlord, built into the game's Performance menu.**
 
@@ -18,7 +18,7 @@ BannerlordFG uses [OptiScaler](https://github.com/optiscaler/OptiScaler) to comb
 4. Confirm the installation. The mod downloads and verifies OptiScaler, then handles the initial restart automatically when possible. Follow the on-screen instructions if a manual relaunch is needed.
 5. Set **Frame Generation → On** in the same menu.
 
-The first setup requires an internet connection and may request Windows administrator permission. **OptiScaler is downloaded separately; its binaries are not included in the mod ZIP.**
+The first setup requires an internet connection and may request Windows administrator permission. Version 1.0.2 extracts the verified OptiScaler 7z inside the maintenance DLL using SharpCompress, so the player's Windows `tar.exe` does not need LZMA support. **OptiScaler is downloaded separately; its binaries are not included in the mod ZIP.**
 
 ## 🎮 In-game controls
 
@@ -159,7 +159,7 @@ When [reporting a bug](https://github.com/luizbizzio/BannerlordFG/issues), inclu
 
 Requires an installed copy of Bannerlord, **Visual Studio 2022 Build Tools / MSBuild**, and the **.NET Framework 4.7.2 targeting pack**. With the game closed, update the `GAME` path in [`BUILD_WINDOWS.cmd`](BUILD_WINDOWS.cmd) if needed and run it as administrator.
 
-The script downloads the official Harmony dependency, compiles `BannerlordFG.dll` and `BannerlordFG.Maintenance.dll`, packages `BannerlordFG-v1.0.1.zip`, and deploys the build to the configured game directory. The Python source-contract tests **do not** replace a Windows build or an in-game test.
+The build restores the SharpCompress NuGet dependency (including runtime libraries), downloads Harmony when needed, compiles `BannerlordFG.dll` and `BannerlordFG.Maintenance.dll`, packages `BannerlordFG-v1.0.2.zip`, and deploys the build to the configured game directory. The Python source-contract tests **do not** replace a Windows build or an in-game test.
 
 ## ❤️ Credits and license
 

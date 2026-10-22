@@ -32,12 +32,13 @@ def test_dead_weak_refs_are_compacted_and_never_pinned_by_refresh():
     assert "_groupOwners.GetValue(group, _ => new GroupOwner()).Vm = vm;" in UI
 
 
-def test_manifest_is_read_once_per_game_session():
+def test_negative_manifest_snapshot_is_rechecked_at_bounded_rate():
     method = MOD.split("private bool IsManagedGraphicsInstalled()", 1)[1].split("private string StateManifest()", 1)[0]
-    assert "if (_managedStateInitialized) return _cachedManagedInstall;" in method
-    assert method.index("if (_managedStateInitialized)") < method.index("File.ReadAllText(manifest)")
+    assert "DateTime.UtcNow < _nextManagedInstallProbeUtc" in method
+    assert method.index("if (_managedStateInitialized &&") < method.index("File.ReadAllText(manifest)")
     assert "_managedStateInitialized = true;" in method
-    assert "_nextManagedInstallProbeUtc" not in MOD
+    assert "DateTime.UtcNow.AddSeconds(2)" in method
+    assert "NativePerformancePatch.ScheduleManagedInstallRefresh();" in method
 
 
 def test_background_poll_only_runs_for_active_or_recovered_install():
@@ -78,6 +79,6 @@ def test_first_relaunch_uninstall_ignores_only_completed_stale_pending_marker():
 
 def test_pinned_release_and_native_limit_remain_unchanged():
     assert "nightly-20261016" in (ROOT / "src/BannerlordFG.Setup/OptiInstaller.cs").read_text()
-    assert "v1.0.1" in (ROOT / "Module/BannerlordFG/SubModule.xml").read_text()
+    assert "v1.0.2" in (ROOT / "Module/BannerlordFG/SubModule.xml").read_text()
     assert "if (_guardFailed" in MOD
     assert "_controller.MaintainVanillaSettings();" in MOD

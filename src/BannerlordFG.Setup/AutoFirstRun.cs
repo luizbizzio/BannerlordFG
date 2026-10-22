@@ -217,12 +217,19 @@ namespace BannerlordFG.Setup
                     FileName = exe,
                     Arguments = string.Join(" ", args.Select(QuoteWindowsArgument)),
                     WorkingDirectory = gameBin,
-                    UseShellExecute = false
+                    // The maintenance DLL runs under PowerShell with stdout/stderr
+                    // redirected to maintenance-host.log. CreateProcess inherits
+                    // those handles when UseShellExecute=false; the relaunched game
+                    // can then keep that log open and block the next elevated
+                    // maintenance helper (first-relaunch Uninstall timeout).
+                    // ShellExecute detaches the GUI game from the worker's
+                    // redirected standard handles. Keep exact EXE/arguments.
+                    UseShellExecute = true
                 };
                 using (var p = Process.Start(startInfo))
                 {
                     if (p == null) throw new InvalidOperationException("Process.Start did not return a game process.");
-                    Log("Direct game EXE launched without native launcher: " + name);
+                    Log("Direct game EXE launched detached from maintenance log handles: " + name);
                 }
             }
             catch (Exception ex)
@@ -389,7 +396,7 @@ namespace BannerlordFG.Setup
                         }
                         return;
                     }
-                    Log("Verified incomplete manifest found; downloading before safe post-exit recovery.");
+                    Log("Verified incomplete manifest from a supported OptiScaler build; downloading current pinned release before safe post-exit recovery.");
                 }
                 if (File.Exists(StatePath(gameBin, ".disabled")))
                 {

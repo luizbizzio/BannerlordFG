@@ -55,7 +55,7 @@ class NativePerformanceChecks(unittest.TestCase):
         self.assertNotIn('AccessTools.Method(group, "ResetData"', N)
         self.assertNotIn('instance._harmony.Patch(groupReset', N)
         self.assertIn('Missing required Options API:', N)
-        self.assertIn('Harmony native Performance v1.0.1 installed', N)
+        self.assertIn('Harmony native Performance v1.0.2 installed', N)
     def test_native_fps_not_modified(self):
         self.assertNotIn('Base FPS Limit',N)
         self.assertNotIn('CreateChoice(vm, new FgMultiplierData', N)

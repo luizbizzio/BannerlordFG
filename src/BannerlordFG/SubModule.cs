@@ -46,10 +46,13 @@ namespace BannerlordFG
         private float _pollElapsed;
         private float _lateCaptureElapsed;
         private int _lateCaptureRetries;
-        // Graphics DLL installation and removal both require game shutdown.
-        // Snapshot on startup instead of re-reading the manifest in every UI hook.
+        // Avoid filesystem access in hot UI hooks. A negative startup snapshot is
+        // retried at most once every two seconds, because the elevated helper may
+        // finish committing its manifest during the first automatic relaunch.
         private bool _managedStateInitialized;
         private bool _cachedManagedInstall;
+        private DateTime _nextManagedInstallProbeUtc;
+        private float _managedInstallProbeElapsed;
         private string _cachedBinHash;
         private string _cachedManifestPath;
         private static int _diagnosticInstalled;
@@ -160,6 +163,18 @@ namespace BannerlordFG
         {
             base.OnApplicationTick(dt);
             NativePerformancePatch.PumpPendingUi();
+            // A first automatic relaunch can overlap the final manifest commit.
+            // Never pin an initial "not installed" snapshot for the whole session;
+            // poll cheaply on the normal game tick, not in Harmony's UI hooks.
+            if (!_requestedExit && _managedStateInitialized && !_cachedManagedInstall)
+            {
+                _managedInstallProbeElapsed += dt;
+                if (_managedInstallProbeElapsed >= 2f)
+                {
+                    _managedInstallProbeElapsed = 0f;
+                    IsManagedGraphicsInstalled();
+                }
+            }
             // The confirmation dialog must finish closing before opening the
             // blocking download dialog; avoid nested TaleWorlds inquiries.
             if (_beginApprovedInstallOnNextTick)
@@ -872,6 +887,19 @@ namespace BannerlordFG
 
         private void BeginUninstall()
         {
+            Log("OptiScaler Uninstall clicked from native Performance menu.");
+            // A freshly relaunched game may have cached the state while the
+            // helper was completing. Revalidate once before acting on a click.
+            if (!_cachedManagedInstall)
+            {
+                _nextManagedInstallProbeUtc = DateTime.MinValue;
+                if (!IsManagedGraphicsInstalled())
+                {
+                    ShowInstallFeedback("OptiScaler uninstall",
+                        "A complete managed installation has not been detected yet. Wait for setup to finish or check first-run.log.");
+                    return;
+                }
+            }
             // Never silently ignore a click. A running campaign must be saved and
             // exited before the graphics injector can be removed safely.
             if (_requestedExit)
@@ -982,7 +1010,7 @@ namespace BannerlordFG
                     _awaitingUninstallAck = false;
                     try { File.Delete(State(".uninstall-pending")); } catch { }
                     string detail = "Maintenance worker did not acknowledge within two minutes. " +
-                        "FG has not been changed. Check UAC and maintenance-host.log.";
+                        "FG has not been changed. Check UAC and maintenance-uninstall.log.";
                     Log("Uninstall acknowledgement timeout: " + detail);
                     ShowInstallFeedback("OptiScaler uninstall failed", detail);
                 }
@@ -998,7 +1026,12 @@ namespace BannerlordFG
 
         private bool IsManagedGraphicsInstalled()
         {
-            if (_managedStateInitialized) return _cachedManagedInstall;
+            // Successful installs remain cached. Only retry an initial negative
+            // result, at a bounded rate, so early relaunches self-correct.
+            if (_managedStateInitialized && (_cachedManagedInstall ||
+                DateTime.UtcNow < _nextManagedInstallProbeUtc)) return _cachedManagedInstall;
+            _nextManagedInstallProbeUtc = DateTime.UtcNow.AddSeconds(2);
+            bool wasInitialized = _managedStateInitialized;
             bool installed = false;
             try
             {
@@ -1019,6 +1052,11 @@ namespace BannerlordFG
             catch { installed = false; }
             _cachedManagedInstall = installed;
             _managedStateInitialized = true;
+            if (wasInitialized && installed)
+            {
+                Log("Completed OptiScaler manifest detected after startup; refreshing Frame Generation controls.");
+                NativePerformancePatch.ScheduleManagedInstallRefresh();
+            }
             return installed;
         }
 

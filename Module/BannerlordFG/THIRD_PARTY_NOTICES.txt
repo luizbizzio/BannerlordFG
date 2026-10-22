@@ -13,6 +13,16 @@ Harmony (0Harmony.dll):
   Source: https://github.com/pardeike/Harmony
   Build dependency: Lib.Harmony 2.3.3 from official NuGet.
 
+SharpCompress (SharpCompress.dll):
+  Copyright (c) Adam Hathcock and contributors.
+  MIT License. The original notice is included in
+  SHARPCOMPRESS_LICENSE.txt in this mod folder.
+  Source: https://github.com/adamhathcock/sharpcompress
+  Version 0.50.5, restored from the official NuGet package during build.
+  Only used to extract the verified OptiScaler archive; not an OptiScaler binary.
+  NuGet restores additional runtime dependencies; retain their own license
+  notices and review their license terms before distributing binaries.
+
 OptiScaler:
   Source: https://github.com/optiscaler/OptiScaler
   Third-party project using GPL-3.0 and potentially additional licenses

@@ -1,9 +1,18 @@
-BannerlordFG v1.0.1 - Recovery guide
+BannerlordFG v1.0.2 - Recovery guide
 ====================================
 
+AUTOMATIC RECOVERY IN v1.0.2
+When you click Install, an INCOMPLETE installation from a recognized
+BannerlordFG OptiScaler release (20260926 or 20261016) can be recovered
+automatically after Bannerlord closes. The helper verifies the old manifest,
+checks owned file hashes, saves a copy of the manifest and any changed managed
+INI files, then installs the current pinned release. You do not need to run
+this script for that case. A COMPLETE existing installation is not replaced.
+
 WHEN TO USE THIS
-Use these steps only if the normal in-game OptiScaler uninstall fails,
-or if the in-game message asks you to recover the installation.
+Use these steps only if automatic recovery cannot safely identify the old
+files, if normal in-game uninstall fails, or if the in-game message asks
+you to recover manually. Do not delete unknown graphics DLLs.
 
 STEP 1 - CLOSE THE GAME
 Save your progress. Close Bannerlord and the Bannerlord launcher.

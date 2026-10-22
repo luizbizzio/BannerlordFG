@@ -1,0 +1,3 @@
+# Windows Command Prompt requires CRLF for reliable GOTO and CALL :label behavior.
+*.cmd text eol=crlf
+*.bat text eol=crlf

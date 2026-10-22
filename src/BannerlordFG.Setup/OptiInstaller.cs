@@ -15,13 +15,25 @@ using System.Web.Script.Serialization;
 
 namespace BannerlordFG.Setup
 {
-    /// <summary>Pinned official-release downloader; no third-party DLLs are bundled.</summary>
+    /// <summary>Pinned OptiScaler downloader. OptiScaler is not bundled; extraction uses SharpCompress.</summary>
     internal static class OptiInstaller
     {
         internal const string Tag = "nightly-20261016";
         internal const string AssetName = "OptiScaler_v10.0.0-pre1_20261016.7z";
         // Pinned hash recovered from the official v1.0.1 release binary (nightly-20261016).
         internal const string PinnedSha256 = "09149a5b17514a0594faf612467267c62ed8851dbc1dde0ade6763f1152e600f";
+        // Used ONLY to identify an interrupted installation from the published 1.0.0 build.
+        // Never download or install this older release, and never trust a manifest
+        // whose tag/hash pair is not explicitly listed here.
+        private const string PreviousTag = "nightly-20260926";
+        private const string PreviousPinnedSha256 = "464e2ecc5dab477e940186959a7fdee64880f61c63f52ff0f516e5502bc74e94";
+        private static bool IsKnownManagedArchive(string tag, string digest)
+        {
+            return (string.Equals(tag, Tag, StringComparison.Ordinal) &&
+                    string.Equals(digest, PinnedSha256, StringComparison.OrdinalIgnoreCase)) ||
+                   (string.Equals(tag, PreviousTag, StringComparison.Ordinal) &&
+                    string.Equals(digest, PreviousPinnedSha256, StringComparison.OrdinalIgnoreCase));
+        }
         internal const string ReleasePage = "https://github.com/optiscaler/OptiScaler-nightly/releases/tag/" + Tag;
         private const string Api = "https://api.github.com/repos/optiscaler/OptiScaler-nightly/releases/tags/" + Tag;
         private const string AssetUrlPrefix = "https://github.com/optiscaler/OptiScaler-nightly/releases/download/" + Tag + "/";
@@ -172,7 +184,7 @@ namespace BannerlordFG.Setup
                 log("Requesting pinned OptiScaler release metadata from GitHub...");
                 using (var client = new WebClient())
                 {
-                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.0.0";
+                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.0.2";
                     client.Headers[HttpRequestHeader.Accept] = "application/vnd.github+json";
                     json = await WithDownloadDeadline(client.DownloadStringTaskAsync(Api), client,
                         TimeSpan.FromSeconds(35), "GitHub release metadata");
@@ -188,7 +200,7 @@ namespace BannerlordFG.Setup
                 log("Downloading pinned official build: " + Tag);
                 using (var client = new WebClient())
                 {
-                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.0.0";
+                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.0.2";
                     int nextPercent = 25;
                     client.DownloadProgressChanged += (sender, args) => {
                         if (args.ProgressPercentage < nextPercent) return;
@@ -261,72 +273,14 @@ namespace BannerlordFG.Setup
                 return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
         }
 
-        // Windows 11 ships bsdtar (tar.exe) with native 7z extraction support.
-        // The upstream archive must match our pinned SHA256 BEFORE tar runs.
-        // No bundled third-party extractor or external installer is executed.
+        // Extract the pinned OptiScaler 7z using managed LZMA decoding rather than
+        // the OS version of tar.exe (which may have no LZMA codec).
+        // Keep the SHA-256 check here even though PreparedPackage.Verify already ran.
         private static void ExtractSafe(string archive, string output)
         {
             if (!HashFile(archive).Equals(PinnedSha256, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("7z archive integrity check failed.");
-            string tar = Path.Combine(Environment.SystemDirectory, "tar.exe");
-            if (!File.Exists(tar)) throw new NotSupportedException(
-                "Windows tar.exe is required to extract the pinned 7z release. Update Windows or install bsdtar.");
-            var listing = RunTar(tar, "-tf \"" + archive + "\"");
-            if (listing.ExitCode != 0) throw new InvalidDataException(
-                "Windows tar.exe cannot read the official 7z archive: " + listing.Error);
-            var names = listing.Output.Split(new[] {'\r','\n'}, StringSplitOptions.RemoveEmptyEntries);
-            if (names.Length == 0 || names.Length > 10000)
-                throw new InvalidDataException("Unexpected number of entries in upstream 7z archive.");
-            foreach (var name in names)
-            {
-                var clean = name.Replace('\\', '/');
-                while (clean.StartsWith("./", StringComparison.Ordinal)) clean = clean.Substring(2);
-                if (clean.StartsWith("/", StringComparison.Ordinal) || clean.Contains(":") ||
-                    clean.Split('/').Any(part => part == ".."))
-                    throw new InvalidDataException("Unsafe entry path in upstream archive: " + name);
-            }
-            var unpack = RunTar(tar, "-xf \"" + archive + "\" -C \"" + output + "\"");
-            if (unpack.ExitCode != 0) throw new InvalidDataException(
-                "Windows tar.exe failed extracting official 7z: " + unpack.Error);
-            long total = 0;
-            string root = Path.GetFullPath(output).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            foreach (var item in Directory.GetFileSystemEntries(output,"*",SearchOption.AllDirectories))
-            {
-                if (!Path.GetFullPath(item).StartsWith(root,StringComparison.OrdinalIgnoreCase) ||
-                    (File.GetAttributes(item) & FileAttributes.ReparsePoint) != 0)
-                    throw new InvalidDataException("Archive produced an unsafe path or reparse point.");
-                if (File.Exists(item)) total += new FileInfo(item).Length;
-                if (total > 1500000000L) throw new InvalidDataException("Archive extraction exceeds safety limit.");
-            }
-        }
-
-        private sealed class TarResult
-        {
-            internal int ExitCode;
-            internal string Output;
-            internal string Error;
-        }
-
-        private static TarResult RunTar(string tar, string arguments)
-        {
-            using (var proc = new Process())
-            {
-                proc.StartInfo = new ProcessStartInfo {
-                    FileName = tar, Arguments = arguments,
-                    UseShellExecute = false, CreateNoWindow = true,
-                    RedirectStandardOutput = true, RedirectStandardError = true
-                };
-                if (!proc.Start()) throw new IOException("Windows tar.exe could not be started.");
-                // Read both pipes concurrently to prevent a full stderr/stdout buffer deadlock.
-                var errTask = proc.StandardError.ReadToEndAsync();
-                var text = proc.StandardOutput.ReadToEnd();
-                if (!proc.WaitForExit(180000))
-                {
-                    try { proc.Kill(); } catch { } // Only our extractor, NEVER Bannerlord.
-                    throw new TimeoutException("7z extraction took too long.");
-                }
-                return new TarResult { ExitCode = proc.ExitCode, Output = text, Error = errTask.GetAwaiter().GetResult() };
-            }
+            SafeSevenZipExtractor.Extract(archive, output);
         }
 
         private static string FindPackageRoot(string extracted)
@@ -496,10 +450,16 @@ namespace BannerlordFG.Setup
                     File.Exists(Path.Combine(gameBin, "dxgi.dll")) &&
                     File.Exists(Path.Combine(gameBin, "OptiScaler.ini")))
                 { reason = "The installed graphics files are already present."; return false; }
-                if (!Str(manifest, "gameBin").Equals(gameBin, StringComparison.OrdinalIgnoreCase) ||
-                    Str(manifest, "archiveSha256") != PinnedSha256 ||
-                    Str(manifest, "tag") != Tag)
-                { reason = "An incomplete manifest does not match this game or pinned OptiScaler build."; return false; }
+                // Do not automatically adopt or delete a complete installation.
+                // Older INCOMPLETE installations can be cleaned only if they were
+                // created with an explicitly known release tag + official archive hash.
+                string stage = Str(manifest, "stage");
+                if (stage.Length > 0 && !stage.Equals("complete", StringComparison.OrdinalIgnoreCase))
+                { reason = "Manifest has an unrecognized installation stage."; return false; }
+                if (!Str(manifest, "gameBin").Equals(gameBin, StringComparison.OrdinalIgnoreCase))
+                { reason = "Manifest points to a different Bannerlord game folder."; return false; }
+                if (!IsKnownManagedArchive(Str(manifest, "tag"), Str(manifest, "archiveSha256")))
+                { reason = "Manifest release tag or archive SHA256 is not a recognized BannerlordFG build."; return false; }
                 object installed;
                 if (!manifest.TryGetValue("installedFiles", out installed) || !(installed is object[]))
                 { reason = "An incomplete manifest has no verifiable file ownership list."; return false; }
