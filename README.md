@@ -163,6 +163,6 @@ The build restores the SharpCompress NuGet dependency (including runtime librari
 
 ## ❤️ Credits and license
 
-BannerlordFG uses [OptiScaler](https://github.com/optiscaler/OptiScaler), AMD FSR 3.1, Intel XeFG and [Harmony](https://github.com/pardeike/Harmony). **Special thanks to [Shaddawen](https://www.nexusmods.com/profile/Shaddawen)** for her help and support during development.
+BannerlordFG uses [OptiScaler](https://github.com/optiscaler/OptiScaler), AMD FSR 3.1, Intel XeFG, [SharpCompress](https://github.com/adamhathcock/sharpcompress), and [Harmony](https://github.com/pardeike/Harmony). **Special thanks to [Shaddawen](https://www.nexusmods.com/profile/Shaddawen)** for her help and support during development.
 
 Original BannerlordFG code is licensed under **[GPL-3.0-only](LICENSE)**. See the [third-party notices](THIRD_PARTY_NOTICES.txt) for component licenses. This is an independent community project, not affiliated with or endorsed by TaleWorlds Entertainment or the third-party projects above.
