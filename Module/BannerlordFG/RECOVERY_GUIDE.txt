@@ -1,7 +1,7 @@
-BannerlordFG v1.0.2 - Recovery guide
+BannerlordFG v1.0.3 - Recovery guide
 ====================================
 
-AUTOMATIC RECOVERY IN v1.0.2
+AUTOMATIC RECOVERY IN v1.0.3
 When you click Install, an INCOMPLETE installation from a recognized
 BannerlordFG OptiScaler release (20260926 or 20261016) can be recovered
 automatically after Bannerlord closes. The helper verifies the old manifest,

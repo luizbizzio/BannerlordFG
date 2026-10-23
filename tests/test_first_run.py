@@ -6,6 +6,7 @@ from xml.etree import ElementTree as ET
 ROOT = Path(__file__).resolve().parents[1]
 SUB = (ROOT / 'src/BannerlordFG/SubModule.cs').read_text()
 AUTO = (ROOT / 'src/BannerlordFG.Setup/AutoFirstRun.cs').read_text()
+GPU = (ROOT / 'src/BannerlordFG.Setup/GpuDetection.cs').read_text()
 PROGRAM = (ROOT / 'src/BannerlordFG.Setup/MaintenanceEntry.cs').read_text()
 INSTALL = (ROOT / 'src/BannerlordFG.Setup/OptiInstaller.cs').read_text()
 
@@ -13,7 +14,7 @@ class FirstRunChecks(unittest.TestCase):
     def test_launcher_uses_bannerlordfg_name(self):
         xml = ET.parse(ROOT / 'Module/BannerlordFG/SubModule.xml').getroot()
         self.assertEqual(xml.find('Name').attrib['value'], 'BannerlordFG')
-        self.assertEqual(xml.find('Version').attrib['value'], 'v1.0.2')
+        self.assertEqual(xml.find('Version').attrib['value'], 'v1.0.3')
         self.assertTrue(xml.find('SubModules/SubModule/DLLName').attrib['value'] == 'BannerlordFG.dll')
 
     def test_first_run_only_on_clean_install(self):
@@ -67,8 +68,10 @@ class FirstRunChecks(unittest.TestCase):
         self.assertNotIn('steam://rungameid/261550', AUTO)
 
     def test_gpu_detection_and_foreign_file_safety(self):
-        self.assertIn('Win32_VideoController', AUTO)
-        self.assertIn('nvidia && amd', AUTO)
+        self.assertIn('GpuDetection.TryDetectActiveGpu(gameBin, waitPid, Log)', AUTO)
+        self.assertIn('GpuDetection.DetectByVendorPriority(Log)', AUTO)
+        self.assertIn('Win32_VideoController', GPU)
+        self.assertNotIn('Mixed NVIDIA/AMD adapters', GPU)
         self.assertIn('ExistingInstallStatus(gameBin)', AUTO)
         self.assertIn('HashFile(target)', INSTALL)
         self.assertIn('File.Copy(files[i], target, false)', INSTALL)

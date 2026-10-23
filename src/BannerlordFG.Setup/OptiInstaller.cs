@@ -184,7 +184,7 @@ namespace BannerlordFG.Setup
                 log("Requesting pinned OptiScaler release metadata from GitHub...");
                 using (var client = new WebClient())
                 {
-                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.0.2";
+                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.0.3";
                     client.Headers[HttpRequestHeader.Accept] = "application/vnd.github+json";
                     json = await WithDownloadDeadline(client.DownloadStringTaskAsync(Api), client,
                         TimeSpan.FromSeconds(35), "GitHub release metadata");
@@ -200,7 +200,7 @@ namespace BannerlordFG.Setup
                 log("Downloading pinned official build: " + Tag);
                 using (var client = new WebClient())
                 {
-                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.0.2";
+                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.0.3";
                     int nextPercent = 25;
                     client.DownloadProgressChanged += (sender, args) => {
                         if (args.ProgressPercentage < nextPercent) return;

@@ -57,5 +57,5 @@ def test_existing_installs_migrated_with_ownership_check():
     assert 'File.Copy(ini, backup, false);' in INSTALLER
 
 def test_release_stays_100():
-    assert ElementTree.parse(ROOT/'Module/BannerlordFG/SubModule.xml').getroot().find('Version').attrib['value']=='v1.0.2'
-    assert 'BannerlordFG-v1.0.2.zip' in load('BUILD_WINDOWS.cmd')
+    assert ElementTree.parse(ROOT/'Module/BannerlordFG/SubModule.xml').getroot().find('Version').attrib['value']=='v1.0.3'
+    assert 'BannerlordFG-v1.0.3.zip' in load('BUILD_WINDOWS.cmd')

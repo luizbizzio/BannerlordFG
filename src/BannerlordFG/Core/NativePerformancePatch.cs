@@ -187,7 +187,7 @@ namespace BannerlordFG.Core
                     postfix: new HarmonyMethod(typeof(NativePerformancePatch), nameof(PerformanceGetterPostfix)));
                 instance._harmony.Patch(vmRefresh,
                     postfix: new HarmonyMethod(typeof(NativePerformancePatch), nameof(OptionsRefreshPostfix)));
-                log("Harmony native Performance v1.0.2 installed: Off/On FG selector, silent fixed 2x and two internal live-control keys. Native limiter preserved.");
+                log("Harmony native Performance v1.0.3 installed: Off/On FG selector, silent fixed 2x and two internal live-control keys. Native limiter preserved.");
                 return true;
             }
             catch (Exception ex)

@@ -34,7 +34,7 @@ class Changes0312(unittest.TestCase):
         self.assertIn('if (!success)',D)
         self.assertIn('BFGOptiScaler}OptiScaler',N)
         x=ET.parse(R/'Module/BannerlordFG/SubModule.xml').getroot()
-        self.assertEqual(x.find('Version').attrib['value'],'v1.0.2')
+        self.assertEqual(x.find('Version').attrib['value'],'v1.0.3')
         self.assertEqual(x.findall('./DependedModules/DependedModule'),[])
         self.assertIn('0Harmony.dll',(R/'BUILD_WINDOWS.cmd').read_text())
     def test_install_and_uninstall_own_original_values_only(self):

@@ -3,7 +3,6 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Management;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
@@ -49,28 +48,13 @@ namespace BannerlordFG.Setup
             catch { /* A log failure must not affect the running game. */ }
         }
 
-        // The Windows WMI list can include an iGPU and a discrete GPU. Prefer a
-        // single discrete NVIDIA/AMD adapter over Intel integrated graphics.
-        // Do NOT guess when two different discrete vendor families are present.
-        private static string DetectGpu()
+        // First identify Bannerlord.exe's active 3D rendering adapter by PID +
+        // DXGI LUID. If Windows does not expose reliable GPU Engine activity,
+        // use a deterministic, no-prompt NVIDIA > AMD > Intel hardware fallback.
+        private static string DetectGpu(string gameBin, int waitPid)
         {
-            using (var searcher = new ManagementObjectSearcher("SELECT Name FROM Win32_VideoController"))
-            {
-                // WMI can hang on broken display drivers. Report the failure
-                // instead of leaving the in-game install notice indefinitely.
-                searcher.Options.Timeout = TimeSpan.FromSeconds(20);
-                string[] names = searcher.Get().Cast<ManagementBaseObject>()
-                    .Select(x => Convert.ToString(x["Name"]) ?? "").ToArray();
-                bool nvidia = names.Any(x => x.IndexOf("NVIDIA", StringComparison.OrdinalIgnoreCase) >= 0);
-                bool amd = names.Any(x => x.IndexOf("Radeon", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                          x.IndexOf("AMD", StringComparison.OrdinalIgnoreCase) >= 0);
-                if (nvidia && amd) throw new InvalidOperationException(
-                    "Mixed NVIDIA/AMD adapters: cannot safely infer the GPU selected inside Bannerlord.");
-                if (nvidia) return "NVIDIA";
-                if (amd) return "AMD";
-                if (names.Any(x => x.IndexOf("Intel", StringComparison.OrdinalIgnoreCase) >= 0)) return "Intel";
-                throw new InvalidOperationException("No supported GPU found through Win32_VideoController.");
-            }
+            string active = GpuDetection.TryDetectActiveGpu(gameBin, waitPid, Log);
+            return active ?? GpuDetection.DetectByVendorPriority(Log);
         }
 
         private static bool ProcessAlive(int pid)
@@ -119,7 +103,7 @@ namespace BannerlordFG.Setup
                 // Never silently take control of someone else's installation.
                 return File.Exists(Path.Combine(gameBin, "OptiScaler.ini"));
             }
-            string gpu = DetectGpu();
+            string gpu = DetectGpu(gameBin, 0);
             Task.Run(() => OptiInstaller.InstallAsync(gameBin, gpu, true /* FSR 3.1 for every GPU including NVIDIA */, Log, true))
                 .GetAwaiter().GetResult();
             File.WriteAllText(StatePath(gameBin, ".enable-next-launch"), "true");
@@ -411,8 +395,8 @@ namespace BannerlordFG.Setup
                         WriteAtomic(StatePath(gameBin, ".blocked"), existing);
                     return;
                 }
-                Log("Detecting display GPU through Windows WMI...");
-                string gpu = DetectGpu();
+                Log("Detecting Bannerlord renderer first; falling back to NVIDIA > AMD > Intel when necessary...");
+                string gpu = DetectGpu(gameBin, waitPid);
                 Log("GPU automatically detected: " + gpu);
                 package = Task.Run(() => OptiInstaller.PrepareOfficialPackageAsync(Log))
                     .GetAwaiter().GetResult();

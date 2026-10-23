@@ -1,4 +1,4 @@
-"""Static release checks for the managed OptiScaler LZMA extraction (v1.0.2)."""
+"""Static release checks for the managed OptiScaler LZMA extraction (v1.0.3)."""
 from pathlib import Path
 import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,5 +30,5 @@ def test_bundled_runtime_dependencies():
     for name in ('SharpCompress.dll', 'Microsoft.Bcl.AsyncInterfaces.dll',
                  'System.Text.Encoding.CodePages.dll'):
         assert name in script
-    assert 'BannerlordFG-v1.0.2.zip' in script
-    assert 'v1.0.2' == ET.parse(ROOT/'Module/BannerlordFG/SubModule.xml').getroot().find('Version').get('value')
+    assert 'BannerlordFG-v1.0.3.zip' in script
+    assert 'v1.0.3' == ET.parse(ROOT/'Module/BannerlordFG/SubModule.xml').getroot().find('Version').get('value')

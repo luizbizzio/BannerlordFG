@@ -6,7 +6,7 @@ S=(ROOT/'BUILD_WINDOWS.cmd').read_text(encoding='utf-8')
 def test_fixed_game_path_and_no_vortex_dependency():
     assert 'Mount & Blade II Bannerlord' in S
     assert 'BUILD_WINDOWS.cmd' in S
-    assert 'BannerlordFG-v1.0.2.zip' in S # standalone ZIP, no mod manager needed
+    assert 'BannerlordFG-v1.0.3.zip' in S # standalone ZIP, no mod manager needed
 
 def test_compile_before_package():
     assert S.index(r'src\BannerlordFG\BannerlordFG.csproj') < S.index(r'src\BannerlordFG.Setup\BannerlordFG.Setup.csproj')
@@ -21,6 +21,6 @@ def test_safe_deploy_and_backup():
     assert 'taskkill' not in S.lower()
 
 def test_package_root_and_version():
-    assert 'BannerlordFG-v1.0.2.zip' in S
+    assert 'BannerlordFG-v1.0.3.zip' in S
     assert 'tar.exe -a -cf "%ARCHIVE%" -C "%ROOT%Module" BannerlordFG' in S
     assert 'BannerlordFG.Helper.cmd' in S

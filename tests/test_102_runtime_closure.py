@@ -1,4 +1,4 @@
-"""Prevent publishing 1.0.2 without SharpCompress runtime assemblies."""
+"""Prevent publishing 1.0.3 without SharpCompress runtime assemblies."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

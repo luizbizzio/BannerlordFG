@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SUB = (ROOT / "src/BannerlordFG/SubModule.cs").read_text()
 AUTO = (ROOT / "src/BannerlordFG.Setup/AutoFirstRun.cs").read_text()
+GPU = (ROOT / "src/BannerlordFG.Setup/GpuDetection.cs").read_text()
 INSTALL = (ROOT / "src/BannerlordFG.Setup/OptiInstaller.cs").read_text()
 HELPER = (ROOT / "Module/BannerlordFG/bin/Win64_Shipping_Client/BannerlordFG.Helper.cmd").read_text()
 
@@ -38,8 +39,10 @@ def test_ui_does_not_wait_forever_if_cmd_exits_early():
 
 def test_worker_identifies_stages_and_network_timeouts():
     assert 'Maintenance DLL entered automatic install' in AUTO
-    assert 'Detecting display GPU through Windows WMI' in AUTO
-    assert 'searcher.Options.Timeout = TimeSpan.FromSeconds(20)' in AUTO
+    assert 'Detecting Bannerlord renderer first' in AUTO
+    assert 'searcher.Options.Timeout = TimeSpan.FromSeconds(4)' in GPU
+    assert 'PdhCollectQueryData(query)' in GPU
+    assert 'searcher.Options.Timeout = TimeSpan.FromSeconds(10)' in GPU
     assert 'Requesting pinned OptiScaler release metadata from GitHub' in INSTALL
     assert 'WithDownloadDeadline(client.DownloadStringTaskAsync' in INSTALL
     assert 'TimeSpan.FromMinutes(4)' in INSTALL

@@ -26,6 +26,7 @@
     <Compile Include="OptiInstaller.cs" />
     <Compile Include="SafeSevenZipExtractor.cs" />
     <Compile Include="AutoFirstRun.cs" />
+    <Compile Include="GpuDetection.cs" />
     <Compile Include="FpsCounterCleanup.cs" />
     <Compile Include="NativeLimiterCleanup.cs" />
   </ItemGroup>
