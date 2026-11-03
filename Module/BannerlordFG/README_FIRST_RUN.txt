@@ -1,4 +1,4 @@
-BannerlordFG v1.0.3 - Player instructions
+BannerlordFG v1.0.4 - Player instructions
 =======================================
 
 INSTALL

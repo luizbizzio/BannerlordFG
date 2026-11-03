@@ -14,7 +14,7 @@ class FirstRunChecks(unittest.TestCase):
     def test_launcher_uses_bannerlordfg_name(self):
         xml = ET.parse(ROOT / 'Module/BannerlordFG/SubModule.xml').getroot()
         self.assertEqual(xml.find('Name').attrib['value'], 'BannerlordFG')
-        self.assertEqual(xml.find('Version').attrib['value'], 'v1.0.3')
+        self.assertEqual(xml.find('Version').attrib['value'], 'v1.0.4')
         self.assertTrue(xml.find('SubModules/SubModule/DLLName').attrib['value'] == 'BannerlordFG.dll')
 
     def test_first_run_only_on_clean_install(self):

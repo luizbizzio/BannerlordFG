@@ -20,9 +20,9 @@ namespace BannerlordFG.Setup
     {
         internal const string Tag = "nightly-20261016";
         internal const string AssetName = "OptiScaler_v10.0.0-pre1_20261016.7z";
-        // Pinned hash recovered from the official v1.0.1 release binary (nightly-20261016).
+        // Pinned hash recovered from the official v1.0.4 release binary (nightly-20261016).
         internal const string PinnedSha256 = "09149a5b17514a0594faf612467267c62ed8851dbc1dde0ade6763f1152e600f";
-        // Used ONLY to identify an interrupted installation from the published 1.0.0 build.
+        // Used ONLY to identify an interrupted installation from the published 1.0.4 build.
         // Never download or install this older release, and never trust a manifest
         // whose tag/hash pair is not explicitly listed here.
         private const string PreviousTag = "nightly-20260926";
@@ -184,7 +184,7 @@ namespace BannerlordFG.Setup
                 log("Requesting pinned OptiScaler release metadata from GitHub...");
                 using (var client = new WebClient())
                 {
-                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.0.3";
+                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.0.4";
                     client.Headers[HttpRequestHeader.Accept] = "application/vnd.github+json";
                     json = await WithDownloadDeadline(client.DownloadStringTaskAsync(Api), client,
                         TimeSpan.FromSeconds(35), "GitHub release metadata");
@@ -200,7 +200,7 @@ namespace BannerlordFG.Setup
                 log("Downloading pinned official build: " + Tag);
                 using (var client = new WebClient())
                 {
-                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.0.3";
+                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.0.4";
                     int nextPercent = 25;
                     client.DownloadProgressChanged += (sender, args) => {
                         if (args.ProgressPercentage < nextPercent) return;
