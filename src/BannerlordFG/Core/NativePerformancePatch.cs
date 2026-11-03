@@ -408,7 +408,8 @@ namespace BannerlordFG.Core
                 // The vanilla DLSS/FSR row is only adapted in the visible VM.
                 // The original game option/provider and its numeric IDs remain intact.
                 p.TryHideNoneInUpscaling(__instance, __1);
-                if (__0 == null || !p._ourNames.TryGetValue(__0, out Marker _)) return;
+                if (ReferenceEquals(__0, null) ||
+                    !p._ourNames.TryGetValue(__0, out Marker _)) return;
                 p.RegisterOurGroup(__instance, __1);
                 p.PopulateVisualRows(__instance, __1, "group constructor");
             }
