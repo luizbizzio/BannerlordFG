@@ -5,12 +5,16 @@ $gameRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $bin = Join-Path $gameRoot 'bin\Win64_Shipping_Client'
 $helper = Join-Path $PSScriptRoot 'bin\Win64_Shipping_Client\BannerlordFG.Helper.cmd'
 if (-not (Test-Path $helper)) { throw 'BannerlordFG maintenance helper is missing. Reinstall the complete mod ZIP before using this recovery script.' }
-if (-not (Test-Path (Join-Path $bin 'Bannerlord.exe')) -and -not (Test-Path (Join-Path $bin 'Bannerlord.Native.exe'))) {
+if (-not (Test-Path (Join-Path $bin 'Bannerlord.exe')) -and
+    -not (Test-Path (Join-Path $bin 'Bannerlord.Native.exe')) -and
+    -not (Test-Path (Join-Path $bin 'TaleWorlds.MountAndBlade.Launcher.exe'))) {
     throw "Could not find Bannerlord executable in $bin"
 }
 Write-Host 'Close Bannerlord and its launcher NORMALLY before continuing.' -ForegroundColor Yellow
 Read-Host 'Press Enter once closed'
-if (Get-Process -Name Bannerlord,Bannerlord.Native -ErrorAction SilentlyContinue) {
+# On some Bannerlord builds the actual game process uses the launcher name.
+# The maintenance DLL performs the same check again before deleting anything.
+if (Get-Process -Name Bannerlord,Bannerlord.Native,TaleWorlds.MountAndBlade.Launcher -ErrorAction SilentlyContinue) {
     throw 'Bannerlord is still running. Nothing was removed.'
 }
 & $helper --uninstall-closed-game --gamebin $bin

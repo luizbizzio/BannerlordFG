@@ -67,8 +67,8 @@ namespace BannerlordFG.Setup
 
         // The original game-host PID can belong to TaleWorlds' launcher. A
         // launcher that survives QuitGame is not a blocker once it no longer
-        // has our injected DXGI proxy loaded. Never assume this if module
-        // enumeration is denied or an actual Bannerlord game PID still exists.
+        // has our OWN managed proxy loaded. An external DXGI (such as ReShade)
+        // must never be mistaken for BannerlordFG's winmm.dll proxy.
         private static bool OriginalPidStillUsingGraphics(int waitPid, string gameBin)
         {
             if (!ProcessAlive(waitPid)) return false;
@@ -78,7 +78,9 @@ namespace BannerlordFG.Setup
                 {
                     if (!p.ProcessName.Equals("TaleWorlds.MountAndBlade.Launcher",
                         StringComparison.OrdinalIgnoreCase)) return true;
-                    string proxy = Path.GetFullPath(Path.Combine(gameBin, "dxgi.dll"));
+                    string managedName = OptiInstaller.GetManagedProxyName(gameBin);
+                    if (managedName == null) return true; // Cannot prove no owned DLL is loaded.
+                    string proxy = Path.GetFullPath(Path.Combine(gameBin, managedName));
                     foreach (ProcessModule module in p.Modules)
                     {
                         if (string.Equals(Path.GetFullPath(module.FileName), proxy,
@@ -185,7 +187,8 @@ namespace BannerlordFG.Setup
                 string name = Path.GetFileName(exe);
                 if (!string.Equals(Path.GetDirectoryName(exe).TrimEnd('\\'), gameBin.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase) ||
                     (!name.Equals("Bannerlord.exe", StringComparison.OrdinalIgnoreCase) &&
-                     !name.Equals("Bannerlord.Native.exe", StringComparison.OrdinalIgnoreCase)) ||
+                     !name.Equals("Bannerlord.Native.exe", StringComparison.OrdinalIgnoreCase) &&
+                     !name.Equals("TaleWorlds.MountAndBlade.Launcher.exe", StringComparison.OrdinalIgnoreCase)) ||
                     !File.Exists(exe))
                     throw new InvalidDataException("Refusing to launch an executable outside the verified game directory.");
                 var args = lines.Skip(1).ToArray();
@@ -279,9 +282,7 @@ namespace BannerlordFG.Setup
                     throw new InvalidOperationException("No matching in-game uninstall request. Nothing removed.");
                 // Refuse foreign/incomplete installs before telling Bannerlord
                 // to close; the menu must not appear to have uninstalled FG.
-                if (!OptiInstaller.HasManagedInstall(gameBin) ||
-                    !File.Exists(Path.Combine(gameBin, "OptiScaler.ini")) ||
-                    !File.Exists(Path.Combine(gameBin, "dxgi.dll")))
+                if (!OptiInstaller.HasCompleteManagedInstall(gameBin))
                     throw new InvalidOperationException(
                         "No complete BannerlordFG-managed OptiScaler install was found. Use manual recovery for an incomplete manifest.");
                 Log("Uninstall ownership preflight passed; acknowledging helper to game PID " + waitPid + ".");
@@ -370,7 +371,7 @@ namespace BannerlordFG.Setup
                     if (!recoverInterrupted)
                     {
                         if (existing != null && existing.Contains("already installed") &&
-                            File.Exists(Path.Combine(gameBin, "dxgi.dll")))
+                            OptiInstaller.HasCompleteManagedInstall(gameBin))
                             Log("Complete BannerlordFG installation detected; no replacement attempted.");
                         else
                         {

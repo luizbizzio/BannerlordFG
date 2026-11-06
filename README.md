@@ -2,7 +2,7 @@
 
 ![BannerlordFG](assets/heading.png)
 
-[![Version](https://img.shields.io/badge/version-1.0.4-blue)](https://github.com/luizbizzio/BannerlordFG) ![Windows](https://img.shields.io/badge/platform-Windows-0078D4) ![DX11](https://img.shields.io/badge/API-DirectX%2011-FF0000) [![GPLv3](https://img.shields.io/badge/license-GPL--3.0--only-green)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue)](https://github.com/luizbizzio/BannerlordFG) ![Windows](https://img.shields.io/badge/platform-Windows-0078D4) ![DX11](https://img.shields.io/badge/API-DirectX%2011-FF0000) [![GPLv3](https://img.shields.io/badge/license-GPL--3.0--only-green)](LICENSE)
 
 **2x Frame Generation for Mount & Blade II: Bannerlord, built into the game's Performance menu.**
 
@@ -18,7 +18,7 @@ BannerlordFG uses [OptiScaler](https://github.com/optiscaler/OptiScaler) to comb
 4. Confirm the installation. The mod downloads and verifies OptiScaler, then handles the initial restart automatically when possible. Follow the on-screen instructions if a manual relaunch is needed.
 5. Set **Frame Generation → On** in the same menu.
 
-The first setup requires an internet connection and may request Windows administrator permission. Version 1.0.4 extracts the verified OptiScaler 7z inside the maintenance DLL using SharpCompress, so the player's Windows `tar.exe` does not need LZMA support. **OptiScaler is downloaded separately; its binaries are not included in the mod ZIP.**
+The first setup requires an internet connection and may request Windows administrator permission. This build pins the official **OptiScaler nightly-20261106** (SHA-256 verified) and extracts the 7z inside the maintenance DLL using SharpCompress, so the player's Windows `tar.exe` does not need LZMA support. **OptiScaler is downloaded separately; its binaries are not included in the mod ZIP.**
 
 ## 🎮 In-game controls
 
@@ -38,6 +38,7 @@ Once initialized, the Frame Generation and FPS counter switches can work without
 ## 🖥️ Compatibility and limitations
 
 - **Windows / DirectX 11 / single-player only.** Windows 11 is the primary target.
+- **ReShade and other graphics injectors:** BannerlordFG prefers `winmm.dll` by default, leaving `dxgi.dll` available for ReShade. If a third-party component already uses `winmm.dll`, the installer falls back to `dxgi.dll` only when it is free. It never installs both BannerlordFG proxies or overwrites an existing DLL. ReShade coexistence still needs in-game validation for individual setups.
 - Requires a compatible GPU with **FSR or DLSS support** and an available temporal upscaling backend. NVIDIA, AMD and Intel compatibility varies by GPU and driver.
 - Frame Generation increases *displayed* FPS, not the game's simulation speed or real rendering throughput. It can introduce latency or visual artifacts, especially at low base frame rates.
 - The mod uses Bannerlord's existing frame limiter. It does not add an unlimited FPS mode or a separate FPS cap.
@@ -138,13 +139,15 @@ ForceBorderless = true
 
 BannerlordFG keeps a manifest of the OptiScaler files it installs and checks their hashes before removing them. If it finds an unfamiliar graphics DLL or modified file, it can stop rather than overwrite somebody else's installation.
 
-**Don't delete an unknown `dxgi.dll` to force the installer through.** It may belong to another mod. See the troubleshooting section below if installation is blocked.
+**Do not rename or delete another mod's graphics DLL to choose the proxy.** It may belong to ReShade or another mod. BannerlordFG uses `winmm.dll` by default. If another component already owns `winmm.dll`, the installer can use `dxgi.dll` instead, provided that name is free. If **both** names are occupied, the installer stops safely without overwriting either DLL. During uninstall, only the proxy recorded in BannerlordFG's hash-verified manifest can be deleted; a third-party `dxgi.dll` is preserved.
+
+**Updating from v1.0.4:** a complete managed installation is never silently replaced. Uninstall the old OptiScaler from the in-game menu while using your previous BannerlordFG build, then install this updated build and install OptiScaler again. Do not manually delete unrecognized DLLs or the ownership manifest.
 
 ## 🛠️ Troubleshooting and removal
 
 | Problem | What to check |
 | --- | --- |
-| Installation is blocked | Check for an existing OptiScaler installation or another graphics injector. Consult the installation log before changing files. |
+| Installation is blocked | Check for an existing OptiScaler installation, or both `winmm.dll` and `dxgi.dll` already occupied. Existing graphics files are never overwritten. |
 | FG cannot be enabled | Confirm that OptiScaler installed and your GPU exposes a compatible upscaling path. If automatic quality selection fails, choose a supported preset in the game's settings. |
 | FG / FPS toggle has no visible effect | Restart Bannerlord to apply the saved state. Runtime requests have no independent readback. |
 | Unexpected OptiScaler splash | Check for a previous OptiScaler installation; do not remove unknown graphics files blindly. |
@@ -159,7 +162,7 @@ When [reporting a bug](https://github.com/luizbizzio/BannerlordFG/issues), inclu
 
 Requires an installed copy of Bannerlord, **Visual Studio 2022 Build Tools / MSBuild**, and the **.NET Framework 4.7.2 targeting pack**. With the game closed, update the `GAME` path in [`BUILD_WINDOWS.cmd`](BUILD_WINDOWS.cmd) if needed and run it as administrator.
 
-The build restores the SharpCompress NuGet dependency (including runtime libraries), downloads Harmony when needed, compiles `BannerlordFG.dll` and `BannerlordFG.Maintenance.dll`, packages `BannerlordFG-v1.0.4.zip`, and deploys the build to the configured game directory. The Python source-contract tests **do not** replace a Windows build or an in-game test.
+The build restores the SharpCompress NuGet dependency (including runtime libraries), downloads Harmony when needed, compiles `BannerlordFG.dll` and `BannerlordFG.Maintenance.dll`, packages `BannerlordFG-v1.1.0.zip`, and deploys the build to the configured game directory. The Python source-contract tests **do not** replace a Windows build or an in-game test.
 
 ## ❤️ Credits and license
 

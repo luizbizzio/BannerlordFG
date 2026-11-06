@@ -1,4 +1,4 @@
-BannerlordFG v1.0.4 - Player instructions
+BannerlordFG v1.1.0 - Player instructions
 =======================================
 
 INSTALL
@@ -38,6 +38,12 @@ NOTES
 - On AMD or Intel GPUs, use DLSS Quality as Bannerlord's input option
   after installation, even if OptiScaler uses FSR for upscaling.
 - OptiScaler files are downloaded separately and are not inside this ZIP.
+- This build downloads official OptiScaler nightly-20261106 and checks SHA-256.
+- BannerlordFG prefers winmm.dll to reduce DXGI conflicts (e.g. ReShade).
+  If another mod already uses winmm.dll, BannerlordFG falls back to dxgi.dll
+  when that name is free. Existing DLLs are never overwritten.
+- If both dxgi.dll and winmm.dll are already occupied, installation stops.
+- Existing complete managed installs must be safely uninstalled before upgrade.
 - The installer extracts the official 7z with SharpCompress, without Windows tar.exe.
 - Keep the extractor DLLs in the mod's bin folder when installing.
 - Logs and recovery backups: %LOCALAPPDATA%\BannerlordFG

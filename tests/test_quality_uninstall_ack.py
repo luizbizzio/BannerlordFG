@@ -1,4 +1,4 @@
-"""v1.0.4 no-EXE regression checks. Integration on Windows remains mandatory."""
+"""v1.1.0 no-EXE regression checks. Integration on Windows remains mandatory."""
 from pathlib import Path
 p=Path(__file__).resolve().parents[1]
 def read(path): return (p/path).read_text(encoding='utf-8')
@@ -44,7 +44,7 @@ def test_uninstall_never_disables_fg_before_helper_ack():
 def test_worker_checks_ownership_then_signals_then_uninstalls_after_exit():
     auto=read('src/BannerlordFG.Setup/AutoFirstRun.cs')
     uninstall=auto.split('internal static void RunUninstall(',1)[1].split('internal static void Run(',1)[0]
-    assert uninstall.index('HasManagedInstall(gameBin)') < uninstall.index('WriteAtomic(ready, waitPid.ToString())')
+    assert uninstall.index('HasCompleteManagedInstall(gameBin)') < uninstall.index('WriteAtomic(ready, waitPid.ToString())')
     assert uninstall.index('WriteAtomic(ready, waitPid.ToString())') < uninstall.index('OptiInstaller.Uninstall(gameBin, Log)')
     assert uninstall.index('OptiInstaller.Uninstall(gameBin, Log)') < uninstall.index('StatePath(gameBin, ".uninstalled")')
     assert 'throw; // Propagate failure to maintenance-host.log' in uninstall
@@ -62,11 +62,12 @@ def test_original_native_settings_restored_only_after_verified_removal():
     assert 'Settings.LastCompatibleDlss = null;' in clean
 
 
-def test_launcher_process_is_only_ignored_after_dxgi_unloads():
+def test_launcher_process_is_only_ignored_after_managed_proxy_unloads():
     auto=read('src/BannerlordFG.Setup/AutoFirstRun.cs')
     check=auto.split('private static bool OriginalPidStillUsingGraphics(',1)[1].split('internal static bool InstallIfNeeded(',1)[0]
     assert 'TaleWorlds.MountAndBlade.Launcher' in check
-    assert 'Path.Combine(gameBin, "dxgi.dll")' in check
+    assert 'OptiInstaller.GetManagedProxyName(gameBin)' in check
+    assert 'Path.Combine(gameBin, managedName)' in check
     assert 'foreach (ProcessModule module in p.Modules)' in check
     assert 'catch { return true; }' in check # Fail closed if module scan denied.
     uninstall=auto.split('internal static void RunUninstall(',1)[1].split('internal static void Run(',1)[0]

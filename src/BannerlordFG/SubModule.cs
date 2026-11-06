@@ -73,7 +73,9 @@ namespace BannerlordFG
                 // has confirmed full removal of the owned OptiScaler files.
                 if (File.Exists(State(".uninstalled")) &&
                     !File.Exists(Path.Combine(_gameBin, "OptiScaler.ini")) &&
-                    !File.Exists(Path.Combine(_gameBin, "dxgi.dll")))
+                    // The player's ReShade dxgi.dll may legitimately remain.
+                    // Successful uninstall is identified by the removed manifest.
+                    !File.Exists(StateManifest()))
                 {
                     string cleanup;
                     if (_controller.TryCompleteUninstall(out cleanup))
@@ -511,7 +513,7 @@ namespace BannerlordFG
                         previous.Contains("\"archiveSha256\"") &&
                         (!previous.Contains("\"stage\":\"complete\"") ||
                          !previous.Contains("\"postinstallFiles\"") ||
-                         !File.Exists(Path.Combine(_gameBin, "dxgi.dll")) ||
+                         !File.Exists(Path.Combine(_gameBin, ProxyFromManifestText(previous))) ||
                          !File.Exists(Path.Combine(_gameBin, "OptiScaler.ini"))))
                     {
                         Log("Incomplete manifest detected. Delegating read-only ownership preflight and post-exit recovery to the maintenance DLL.");
@@ -525,16 +527,32 @@ namespace BannerlordFG
                 return "OptiScaler.ini already exists, but there is no complete BannerlordFG-managed installation. This may be an external or incomplete installation. Back up and resolve it first; the installer will not overwrite its files.";
             if (Directory.Exists(Path.Combine(_gameBin, "OptiScaler")))
                 return "An existing OptiScaler directory was detected. Resolve the previous installation before retrying; its contents have not been changed.";
-            foreach (string proxy in new[] { "dxgi.dll", "winmm.dll", "version.dll", "dbghelp.dll" })
-            {
-                string path = Path.Combine(_gameBin, proxy);
-                // A stock Microsoft dbghelp.dll is checked more precisely by the
-                // setup helper. Defer that one rather than showing a false block.
-                if (proxy == "dbghelp.dll") continue;
-                if (File.Exists(path))
-                    return "A graphics-hook DLL already exists: " + proxy + ". Resolve conflicts with ReShade or another installer first.";
-            }
+            // Prefer winmm.dll; use dxgi.dll only when winmm.dll is already
+            // occupied by another mod. ReShade's DXGI file is left untouched.
+            bool dxgiExists = File.Exists(Path.Combine(_gameBin, "dxgi.dll"));
+            bool winmmExists = File.Exists(Path.Combine(_gameBin, "winmm.dll"));
+            if (dxgiExists && winmmExists)
+                return "Both winmm.dll and dxgi.dll exist. The installer cannot safely select a proxy.";
+            foreach (string proxy in new[] { "version.dll", "d3d11.dll", "d3d12.dll", "wininet.dll", "winhttp.dll" })
+                if (File.Exists(Path.Combine(_gameBin, proxy)))
+                    return "Another graphics-hook DLL already exists: " + proxy + ". No external file will be overwritten.";
             return null;
+        }
+
+        private static string ProxyFromManifestText(string text)
+        {
+            // New manifests record the proxy explicitly. Old v1.0.4 manifests
+            // predate this field and always used dxgi.dll.
+            const string key = "\"proxyFileName\":\"";
+            int index = text.IndexOf(key, StringComparison.OrdinalIgnoreCase);
+            if (index < 0) return "dxgi.dll"; // Legacy manifest.
+            int start = index + key.Length;
+            int end = text.IndexOf('"', start);
+            if (end < 0) return null;
+            string value = text.Substring(start, end - start);
+            if (value.Equals("winmm.dll", StringComparison.OrdinalIgnoreCase)) return "winmm.dll";
+            if (value.Equals("dxgi.dll", StringComparison.OrdinalIgnoreCase)) return "dxgi.dll";
+            return null; // Unknown ownership; stop safely.
         }
 
         private void CloseNotice()
@@ -1039,12 +1057,13 @@ namespace BannerlordFG
                 {
                     string manifest = StateManifest();
                     string ini = Path.Combine(_gameBin, "OptiScaler.ini");
-                    string dxgi = Path.Combine(_gameBin, "dxgi.dll");
-                    if (File.Exists(manifest) && File.Exists(ini) && File.Exists(dxgi))
+                    if (File.Exists(manifest) && File.Exists(ini))
                     {
                         string text = File.ReadAllText(manifest);
+                        string proxyPath = Path.Combine(_gameBin, ProxyFromManifestText(text));
                         // An interrupted install is not a managed installation.
-                        installed = text.IndexOf("\"stage\":\"complete\"", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                        installed = File.Exists(proxyPath) &&
+                            text.IndexOf("\"stage\":\"complete\"", StringComparison.OrdinalIgnoreCase) >= 0 &&
                             text.IndexOf("\"postinstallFiles\"", StringComparison.OrdinalIgnoreCase) >= 0;
                     }
                 }

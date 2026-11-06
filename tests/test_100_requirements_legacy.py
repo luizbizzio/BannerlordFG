@@ -1,4 +1,4 @@
-"""v1.0.4 source-contract checks. They are not a Windows/game integration test."""
+"""v1.1.0 source-contract checks. They are not a Windows/game integration test."""
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -7,9 +7,9 @@ def source(rel): return (ROOT / rel).read_text(encoding='utf-8')
 
 
 def test_version_100_everywhere_that_is_a_release_identifier():
-    assert ET.parse(ROOT / 'Module/BannerlordFG/SubModule.xml').getroot().find('Version').get('value') == 'v1.0.4'
-    assert 'BannerlordFG-v1.0.4.zip' in source('BUILD_WINDOWS.cmd')
-    assert 'SUCCESS: BannerlordFG v1.0.4 compiled and installed.' in source('BUILD_WINDOWS.cmd')
+    assert ET.parse(ROOT / 'Module/BannerlordFG/SubModule.xml').getroot().find('Version').get('value') == 'v1.1.0'
+    assert 'BannerlordFG-v1.1.0.zip' in source('BUILD_WINDOWS.cmd')
+    assert 'SUCCESS: BannerlordFG v1.1.0 compiled and installed.' in source('BUILD_WINDOWS.cmd')
 
 
 def test_title_and_multiplier_button_with_actual_callback():
@@ -49,7 +49,7 @@ def test_shortcuts_disabled_in_new_install_and_existing_managed_ini():
     assert 'ConfigureLiveControlAssignments(text)' in installer
     assert '--configure-live-controls-closed-game' in setup
     assert '--configure-live-controls-closed-game --gamebin "%GAMEBIN%"' in build
-    assert 'HashFile(Path.Combine(gameBin, "dxgi.dll")).Equals(expectedProxy' in installer
+    assert 'HashFile(Path.Combine(gameBin, proxy)).Equals(expectedProxy' in installer
     assert 'Hotkey' in installer and 'Hotkey' in profile
     assert (ROOT / 'src/BannerlordFG/Core/OptiLiveHotkeys.cs').exists()
 
@@ -89,5 +89,5 @@ def test_disabling_fg_does_not_switch_upscaler_off_mid_session():
 
 def test_version_does_not_change_the_pinned_third_party_build():
     xml = ET.parse(ROOT/'Module/BannerlordFG/SubModule.xml').getroot()
-    assert xml.find('Version').get('value') == 'v1.0.4'
+    assert xml.find('Version').get('value') == 'v1.1.0'
     assert 'nightly-20261016' in source('src/BannerlordFG.Setup/OptiInstaller.cs')

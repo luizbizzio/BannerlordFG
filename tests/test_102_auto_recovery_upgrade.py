@@ -16,10 +16,12 @@ def section(start, end):
 
 def test_known_archive_pairs_are_pinned_to_actual_published_builds():
     constants = dict(re.findall(r'(?:internal|private) const string (\w+) = "([^"]+)";', SETUP))
-    assert constants['Tag'] == 'nightly-20261016'
-    assert constants['PinnedSha256'] == '09149a5b17514a0594faf612467267c62ed8851dbc1dde0ade6763f1152e600f'
-    assert constants['PreviousTag'] == 'nightly-20260926'
-    assert constants['PreviousPinnedSha256'] == '464e2ecc5dab477e940186959a7fdee64880f61c63f52ff0f516e5502bc74e94'
+    assert constants['Tag'] == 'nightly-20261106'
+    assert constants['PinnedSha256'] == '5b92e637cdead99c8d994360850407e93876f00b5f0776f2be39a1ee2caa5726'
+    assert constants['PreviousTag'] == 'nightly-20261016'
+    assert constants['PreviousPinnedSha256'] == '09149a5b17514a0594faf612467267c62ed8851dbc1dde0ade6763f1152e600f'
+    assert constants['LegacyTag'] == 'nightly-20260926'
+    assert constants['LegacyPinnedSha256'] == '464e2ecc5dab477e940186959a7fdee64880f61c63f52ff0f516e5502bc74e94'
     matcher = section('private static bool IsKnownManagedArchive(', 'internal const string ReleasePage')
     assert 'string.Equals(tag, Tag, StringComparison.Ordinal)' in matcher
     assert 'string.Equals(digest, PinnedSha256, StringComparison.OrdinalIgnoreCase)' in matcher
@@ -35,8 +37,9 @@ def test_recovery_rejects_unknown_build_or_different_game():
     assert 'IsKnownManagedArchive(Str(manifest, "tag"), Str(manifest, "archiveSha256"))' in preflight
     assert 'Manifest release tag or archive SHA256 is not a recognized BannerlordFG build.' in preflight
     assert 'Manifest has an unrecognized installation stage.' in preflight
-    assert 'File.Exists(Path.Combine(gameBin, "dxgi.dll"))' in preflight
-    assert 'File.Exists(Path.Combine(gameBin, "OptiScaler.ini"))' in preflight
+    assert 'HasCompleteManagedInstall(gameBin)' in preflight
+    assert 'managedProxy = ManifestProxyName(manifest)' in preflight
+    assert '"OptiScaler.ini"' in preflight
     assert 'A previously installed binary was modified' in preflight
     assert 'An untracked file exists in the OptiScaler directory' in preflight
     assert 'ReparsePoint' in preflight

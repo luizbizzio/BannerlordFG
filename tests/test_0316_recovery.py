@@ -41,7 +41,9 @@ def test_cli_returns_error_for_retained_manifest():
 
 def test_recovery_does_not_force_delete_unknown_dlls():
     assert 'Safe' not in CMD or 'del /' not in CMD.lower()
-    assert 'dxgi.dll still exists' in CMD
+    assert 'Existing dxgi.dll preserved' in CMD
+    assert 'Existing winmm.dll preserved' in CMD
+    assert 'No overwrite' not in CMD or 'del /' not in CMD.lower()
     assert 'OptiScaler directory still exists' in CMD
     assert 'preflight-' in CMD
 
@@ -54,5 +56,5 @@ def test_manifest_removal_requires_all_owned_files_gone():
     assert 'Manifest retained: unrecognized or modified tracked files require manual review:' in INSTALL
 
 def test_archive_version_bumped():
-    assert 'v1.0.4' in (ROOT/'Module/BannerlordFG/SubModule.xml').read_text()
-    assert 'v1.0.4' in (ROOT/'BUILD_WINDOWS.cmd').read_text()
+    assert 'v1.1.0' in (ROOT/'Module/BannerlordFG/SubModule.xml').read_text()
+    assert 'v1.1.0' in (ROOT/'BUILD_WINDOWS.cmd').read_text()

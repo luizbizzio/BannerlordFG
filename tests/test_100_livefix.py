@@ -1,4 +1,4 @@
-"""Static regression checks for v1.0.4 live UI; not a substitute for a Windows game run."""
+"""Static regression checks for v1.1.0 live UI; not a substitute for a Windows game run."""
 from pathlib import Path
 from xml.etree import ElementTree
 ROOT=Path(__file__).resolve().parents[1]
@@ -53,9 +53,9 @@ def test_existing_installs_migrated_with_ownership_check():
     prog=load('src/BannerlordFG.Setup/MaintenanceEntry.cs')
     assert '--configure-live-controls-closed-game --gamebin "%GAMEBIN%"' in build
     assert '--configure-live-controls-closed-game' in prog
-    assert 'HashFile(Path.Combine(gameBin, "dxgi.dll")).Equals(expectedProxy' in INSTALLER
+    assert 'HashFile(Path.Combine(gameBin, proxy)).Equals(expectedProxy' in INSTALLER
     assert 'File.Copy(ini, backup, false);' in INSTALLER
 
 def test_release_stays_100():
-    assert ElementTree.parse(ROOT/'Module/BannerlordFG/SubModule.xml').getroot().find('Version').attrib['value']=='v1.0.4'
-    assert 'BannerlordFG-v1.0.4.zip' in load('BUILD_WINDOWS.cmd')
+    assert ElementTree.parse(ROOT/'Module/BannerlordFG/SubModule.xml').getroot().find('Version').attrib['value']=='v1.1.0'
+    assert 'BannerlordFG-v1.1.0.zip' in load('BUILD_WINDOWS.cmd')

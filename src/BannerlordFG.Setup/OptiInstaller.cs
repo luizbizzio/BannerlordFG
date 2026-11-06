@@ -18,21 +18,24 @@ namespace BannerlordFG.Setup
     /// <summary>Pinned OptiScaler downloader. OptiScaler is not bundled; extraction uses SharpCompress.</summary>
     internal static class OptiInstaller
     {
-        internal const string Tag = "nightly-20261016";
-        internal const string AssetName = "OptiScaler_v10.0.0-pre1_20261016.7z";
-        // Pinned hash recovered from the official v1.0.4 release binary (nightly-20261016).
-        internal const string PinnedSha256 = "09149a5b17514a0594faf612467267c62ed8851dbc1dde0ade6763f1152e600f";
-        // Used ONLY to identify an interrupted installation from the published 1.0.4 build.
-        // Never download or install this older release, and never trust a manifest
-        // whose tag/hash pair is not explicitly listed here.
-        private const string PreviousTag = "nightly-20260926";
-        private const string PreviousPinnedSha256 = "464e2ecc5dab477e940186959a7fdee64880f61c63f52ff0f516e5502bc74e94";
+        internal const string Tag = "nightly-20261106";
+        internal const string AssetName = "OptiScaler_v10.0.0-pre1_20261106.7z";
+        // Official GitHub release asset SHA-256, verified 2026-11-06.
+        internal const string PinnedSha256 = "5b92e637cdead99c8d994360850407e93876f00b5f0776f2be39a1ee2caa5726";
+        // Legacy releases are recognized ONLY for safe, hash-verified recovery/uninstall.
+        // They are not downloaded or installed by this build.
+        private const string PreviousTag = "nightly-20261016";
+        private const string PreviousPinnedSha256 = "09149a5b17514a0594faf612467267c62ed8851dbc1dde0ade6763f1152e600f";
+        private const string LegacyTag = "nightly-20260926";
+        private const string LegacyPinnedSha256 = "464e2ecc5dab477e940186959a7fdee64880f61c63f52ff0f516e5502bc74e94";
         private static bool IsKnownManagedArchive(string tag, string digest)
         {
             return (string.Equals(tag, Tag, StringComparison.Ordinal) &&
                     string.Equals(digest, PinnedSha256, StringComparison.OrdinalIgnoreCase)) ||
                    (string.Equals(tag, PreviousTag, StringComparison.Ordinal) &&
-                    string.Equals(digest, PreviousPinnedSha256, StringComparison.OrdinalIgnoreCase));
+                    string.Equals(digest, PreviousPinnedSha256, StringComparison.OrdinalIgnoreCase)) ||
+                   (string.Equals(tag, LegacyTag, StringComparison.Ordinal) &&
+                    string.Equals(digest, LegacyPinnedSha256, StringComparison.OrdinalIgnoreCase));
         }
         internal const string ReleasePage = "https://github.com/optiscaler/OptiScaler-nightly/releases/tag/" + Tag;
         private const string Api = "https://api.github.com/repos/optiscaler/OptiScaler-nightly/releases/tags/" + Tag;
@@ -60,6 +63,73 @@ namespace BannerlordFG.Setup
         // official proxy's version metadata instead of labelling it as ReShade.
         internal static bool HasManagedInstall(string gameBin) => File.Exists(GetManifestPath(gameBin));
 
+        // Only the proxy named in the manifest belongs to this installation.
+        // Legacy v1.0.4 manifests have no proxyFileName and always used dxgi.dll.
+        private static string ManifestProxyName(Dictionary<string, object> manifest)
+        {
+            string proxy = Str(manifest, "proxyFileName");
+            if (string.IsNullOrEmpty(proxy)) return "dxgi.dll";
+            if (proxy.Equals("dxgi.dll", StringComparison.OrdinalIgnoreCase)) return "dxgi.dll";
+            if (proxy.Equals("winmm.dll", StringComparison.OrdinalIgnoreCase)) return "winmm.dll";
+            throw new InvalidDataException("Unrecognized managed proxy name: " + proxy);
+        }
+
+        internal static string GetManagedProxyName(string gameBin)
+        {
+            string path = GetManifestPath(gameBin);
+            if (!File.Exists(path)) return null;
+            return ManifestProxyName(ParseJsonObject(File.ReadAllText(path)));
+        }
+
+        internal static bool HasCompleteManagedInstall(string gameBin)
+        {
+            try
+            {
+                string path = GetManifestPath(gameBin);
+                if (!File.Exists(path) || !File.Exists(Path.Combine(gameBin, "OptiScaler.ini"))) return false;
+                var manifest = ParseJsonObject(File.ReadAllText(path));
+                if (!Str(manifest, "gameBin").Equals(gameBin, StringComparison.OrdinalIgnoreCase) ||
+                    !Str(manifest, "stage").Equals("complete", StringComparison.OrdinalIgnoreCase) ||
+                    !IsKnownManagedArchive(Str(manifest, "tag"), Str(manifest, "archiveSha256"))) return false;
+                string proxy = ManifestProxyName(manifest);
+                string filename = Path.Combine(gameBin, proxy);
+                if (!File.Exists(filename)) return false;
+                object entry;
+                var post = manifest.TryGetValue("postinstallFiles", out entry)
+                    ? entry as Dictionary<string, object> : null;
+                if (post == null) return false;
+                string otherProxy = proxy == "dxgi.dll" ? "winmm.dll" : "dxgi.dll";
+                if (post.ContainsKey(otherProxy)) return false; // Never claim a foreign proxy.
+                string hash = Str(post, proxy);
+                return Regex.IsMatch(hash, "^[a-fA-F0-9]{64}$") &&
+                    HashFile(filename).Equals(hash, StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+        }
+
+        private static bool LooksLikeOptiScaler(string path)
+        {
+            try
+            {
+                var info = FileVersionInfo.GetVersionInfo(path);
+                return (info.OriginalFilename ?? "").IndexOf("OptiScaler", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    (info.ProductName ?? "").IndexOf("OptiScaler", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+            catch { return false; }
+        }
+
+        // Prefer WinMM in Bannerlord (verified to initialize the overlay). DXGI
+        // remains the fallback if WinMM is already occupied by another mod.
+        // NEVER overwrite a third-party proxy or install both BannerlordFG proxies.
+        private static string SelectProxyName(string gameBin)
+        {
+            bool winmmOccupied = File.Exists(Path.Combine(gameBin, "winmm.dll"));
+            bool dxgiOccupied = File.Exists(Path.Combine(gameBin, "dxgi.dll"));
+            if (!winmmOccupied) return "winmm.dll";
+            if (!dxgiOccupied) return "dxgi.dll";
+            throw new IOException("Both winmm.dll and dxgi.dll are occupied; neither will be overwritten.");
+        }
+
         internal static string ExistingInstallStatus(string gameBin)
         {
             if (File.Exists(Path.Combine(gameBin, "OptiScaler.ini")))
@@ -67,21 +137,24 @@ namespace BannerlordFG.Setup
                     "OptiScaler.ini already exists: preserving the user's external installation.";
             if (Directory.Exists(Path.Combine(gameBin, "OptiScaler")))
                 return "OptiScaler directory already exists; installation may be incomplete. No changes made.";
+
+            // Never adopt another standalone OptiScaler or overwrite a foreign
+            // proxy. An arbitrary ReShade/proxy DLL occupying *one* filename is
+            // permitted; the other filename remains available for BannerlordFG.
             foreach (string proxy in Proxies)
             {
                 string path = Path.Combine(gameBin, proxy);
                 if (!File.Exists(path)) continue;
-                if (IsMicrosoftDbgHelp(path)) continue;
-                try
-                {
-                    var info = FileVersionInfo.GetVersionInfo(path);
-                    if ((info.OriginalFilename ?? "").IndexOf("OptiScaler", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        (info.ProductName ?? "").IndexOf("OptiScaler", StringComparison.OrdinalIgnoreCase) >= 0)
-                        return proxy + " belongs to OptiScaler, but OptiScaler.ini is missing. Leaving the existing DLL untouched.";
-                }
-                catch { /* Unreadable metadata is not proof of ownership. */ }
-                return proxy + " is already occupied by an unknown graphics component. Leaving it untouched.";
+                if (LooksLikeOptiScaler(path))
+                    return proxy + " already contains OptiScaler without our manifest. Preserve it for manual recovery.";
+                if (proxy.Equals("winmm.dll", StringComparison.OrdinalIgnoreCase) ||
+                    proxy.Equals("dxgi.dll", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                return proxy + " is already occupied by another component. Leaving it untouched.";
             }
+            if (File.Exists(Path.Combine(gameBin, "winmm.dll")) &&
+                File.Exists(Path.Combine(gameBin, "dxgi.dll")))
+                return "Both winmm.dll and dxgi.dll exist. No free supported proxy name; nothing will be overwritten.";
             return null;
         }
 
@@ -91,7 +164,8 @@ namespace BannerlordFG.Setup
             string p = Path.GetFullPath(raw.Trim().Trim('"'));
             if (Directory.Exists(Path.Combine(p, "bin", "Win64_Shipping_Client")))
                 p = Path.Combine(p, "bin", "Win64_Shipping_Client");
-            if (!Directory.Exists(p) || !new[] { "Bannerlord.exe", "Bannerlord.Native.exe" }
+            if (!Directory.Exists(p) || !new[] { "Bannerlord.exe", "Bannerlord.Native.exe",
+                "TaleWorlds.MountAndBlade.Launcher.exe" }
                 .Any(exe => File.Exists(Path.Combine(p, exe))))
                 throw new InvalidOperationException("This is not a Bannerlord executable directory.");
             return p;
@@ -108,7 +182,11 @@ namespace BannerlordFG.Setup
                     // The TaleWorlds launcher may remain open after QuitGame and must not
                     // block post-exit uninstall indefinitely.
                     return name.Equals("Bannerlord", StringComparison.OrdinalIgnoreCase) ||
-                           name.Equals("Bannerlord.Native", StringComparison.OrdinalIgnoreCase);
+                           name.Equals("Bannerlord.Native", StringComparison.OrdinalIgnoreCase) ||
+                           // Some installations host the actual running game in the
+                           // TaleWorlds launcher executable. Treat it as active to
+                           // avoid changing loaded graphics DLLs while it runs.
+                           name.Equals("TaleWorlds.MountAndBlade.Launcher", StringComparison.OrdinalIgnoreCase);
                 }
                 catch { return false; }
                 finally { p.Dispose(); }
@@ -184,7 +262,7 @@ namespace BannerlordFG.Setup
                 log("Requesting pinned OptiScaler release metadata from GitHub...");
                 using (var client = new WebClient())
                 {
-                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.0.4";
+                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.1.0";
                     client.Headers[HttpRequestHeader.Accept] = "application/vnd.github+json";
                     json = await WithDownloadDeadline(client.DownloadStringTaskAsync(Api), client,
                         TimeSpan.FromSeconds(35), "GitHub release metadata");
@@ -200,7 +278,7 @@ namespace BannerlordFG.Setup
                 log("Downloading pinned official build: " + Tag);
                 using (var client = new WebClient())
                 {
-                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.0.4";
+                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.1.0";
                     int nextPercent = 25;
                     client.DownloadProgressChanged += (sender, args) => {
                         if (args.ProgressPercentage < nextPercent) return;
@@ -352,8 +430,7 @@ namespace BannerlordFG.Setup
             if (string.IsNullOrWhiteSpace(gameBin)) throw new ArgumentException("--gamebin is required.");
             gameBin = Path.GetFullPath(gameBin);
             string ini = Path.Combine(gameBin, "OptiScaler.ini");
-            if (!HasManagedInstall(gameBin) || !File.Exists(ini) ||
-                !File.Exists(Path.Combine(gameBin, "dxgi.dll")))
+            if (!HasCompleteManagedInstall(gameBin) || !File.Exists(ini))
             {
                 log("Existing key migration skipped: no complete managed OptiScaler installation.");
                 return;
@@ -363,17 +440,19 @@ namespace BannerlordFG.Setup
             var manifest = ParseJsonObject(File.ReadAllText(GetManifestPath(gameBin)));
             if (!Str(manifest, "gameBin").Equals(gameBin, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("Manifest belongs to a different game folder; no INI changes made.");
-            string expectedProxy = Str(manifest, "movedDxgiSha256");
+            string proxy = ManifestProxyName(manifest);
+            object owned;
+            string expectedProxy = null;
+            if (manifest.TryGetValue("postinstallFiles", out owned) &&
+                owned is Dictionary<string, object> postinstall)
+                expectedProxy = Str(postinstall, proxy);
             if (string.IsNullOrWhiteSpace(expectedProxy))
-            {
-                object owned;
-                if (manifest.TryGetValue("postinstallFiles", out owned) &&
-                    owned is Dictionary<string, object> postinstall)
-                    expectedProxy = Str(postinstall, "dxgi.dll");
-            }
+                expectedProxy = Str(manifest, "movedProxySha256");
+            if (string.IsNullOrWhiteSpace(expectedProxy) && proxy == "dxgi.dll")
+                expectedProxy = Str(manifest, "movedDxgiSha256");
             if (string.IsNullOrWhiteSpace(expectedProxy) ||
-                !HashFile(Path.Combine(gameBin, "dxgi.dll")).Equals(expectedProxy, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException("Cannot verify ownership of dxgi.dll; the OptiScaler INI is unchanged.");
+                !HashFile(Path.Combine(gameBin, proxy)).Equals(expectedProxy, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Cannot verify ownership of " + proxy + "; the OptiScaler INI is unchanged.");
             string before = File.ReadAllText(ini);
             string after = ConfigureLiveControlAssignments(before);
             if (before == after) { log("OptiScaler internal live controls already configured."); return; }
@@ -445,10 +524,7 @@ namespace BannerlordFG.Setup
                 // prior cleanup later removed one of the two required files.
                 // Such damaged installs may be repaired with the same ownership
                 // checks as an interrupted install. Never take over intact ones.
-                if (Str(manifest, "stage").Equals("complete", StringComparison.OrdinalIgnoreCase) &&
-                    manifest.ContainsKey("postinstallFiles") &&
-                    File.Exists(Path.Combine(gameBin, "dxgi.dll")) &&
-                    File.Exists(Path.Combine(gameBin, "OptiScaler.ini")))
+                if (HasCompleteManagedInstall(gameBin))
                 { reason = "The installed graphics files are already present."; return false; }
                 // Do not automatically adopt or delete a complete installation.
                 // Older INCOMPLETE installations can be cleaned only if they were
@@ -477,29 +553,35 @@ namespace BannerlordFG.Setup
                     { reason = "An incomplete manifest has an unsafe or duplicate file record."; return false; }
                     owned.Add(rel, sha);
                 }
+                string managedProxy = ManifestProxyName(manifest);
                 object value;
-                if (manifest.TryGetValue("movedDxgiSha256", out value))
+                if (manifest.TryGetValue("movedProxySha256", out value) ||
+                    (managedProxy == "dxgi.dll" && manifest.TryGetValue("movedDxgiSha256", out value)))
                 {
                     string sha = Convert.ToString(value);
                     if (!Regex.IsMatch(sha ?? "", "^[a-fA-F0-9]{64}$"))
-                    { reason = "Invalid managed DXGI checksum."; return false; }
-                    owned["dxgi.dll"] = sha;
+                    { reason = "Invalid managed proxy checksum."; return false; }
+                    owned[managedProxy] = sha;
                 }
                 else if (owned.ContainsKey("OptiScaler.dll") &&
                     !File.Exists(Path.Combine(gameBin, "OptiScaler.dll")))
                 {
-                    // A crash between File.Move and committing movedDxgiSha256.
-                    string proxy = Path.Combine(gameBin, "dxgi.dll");
-                    if (File.Exists(proxy)) owned["dxgi.dll"] = owned["OptiScaler.dll"];
+                    // A crash between File.Move and recording the proxy hash.
+                    // Accept ONLY bytes identical to the manifest-owned OptiScaler.dll.
+                    string proxyPath = Path.Combine(gameBin, managedProxy);
+                    if (File.Exists(proxyPath) && HashFile(proxyPath).Equals(
+                        owned["OptiScaler.dll"], StringComparison.OrdinalIgnoreCase))
+                        owned[managedProxy] = owned["OptiScaler.dll"];
                 }
                 if (manifest.TryGetValue("postinstallFiles", out value) &&
                     value is Dictionary<string, object>)
                 {
                     foreach (var pair in (Dictionary<string, object>)value)
                     {
-                        // Final post-install hashes can differ only for files
-                        // already tracked or the explicitly created DXGI/INI backup.
-                        if (!owned.ContainsKey(pair.Key) && pair.Key != "dxgi.dll" &&
+                        // Never adopt an unrelated DXGI proxy when this installation
+                        // uses winmm.dll. Only the manifest-selected proxy is owned.
+                        if (!owned.ContainsKey(pair.Key) &&
+                            !pair.Key.Equals(managedProxy, StringComparison.OrdinalIgnoreCase) &&
                             pair.Key != "OptiScaler.ini.bannerlordfg-original.bak")
                         { reason = "A finished manifest contains an unrecognized file."; return false; }
                         string sha = Convert.ToString(pair.Value);
@@ -550,7 +632,7 @@ namespace BannerlordFG.Setup
                         }
                     }
                 }
-                foreach (string candidate in new[] { "dxgi.dll", "OptiScaler.dll", "OptiScaler.ini",
+                foreach (string candidate in new[] { managedProxy, "OptiScaler.dll", "OptiScaler.ini",
                     "OptiScaler.ini.bannerlordfg-original.bak" })
                     if (File.Exists(Path.Combine(gameBin, candidate)) && !owned.ContainsKey(candidate))
                     { reason = "An untracked graphics/configuration file already exists: " + candidate; return false; }
@@ -626,11 +708,18 @@ namespace BannerlordFG.Setup
             var m = ParseJsonObject(File.ReadAllText(manifestPath));
             if (!Str(m, "gameBin").Equals(gameBin, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("Manifest does not belong to this Bannerlord installation.");
+            if (!IsKnownManagedArchive(Str(m, "tag"), Str(m, "archiveSha256")))
+                throw new InvalidDataException("Manifest release checksum is not recognized. No files removed.");
+            string managedProxy = ManifestProxyName(m);
             var checksums = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             object obj;
             if (m.TryGetValue("postinstallFiles", out obj) && obj is Dictionary<string, object>)
             {
-                foreach (var kv in (Dictionary<string, object>)obj) checksums[kv.Key] = Convert.ToString(kv.Value);
+                var post = (Dictionary<string, object>)obj;
+                string otherProxy = managedProxy == "dxgi.dll" ? "winmm.dll" : "dxgi.dll";
+                if (post.Keys.Any(k => k.Equals(otherProxy, StringComparison.OrdinalIgnoreCase)))
+                    throw new InvalidDataException("Manifest attempts to claim a foreign proxy: " + otherProxy);
+                foreach (var kv in post) checksums[kv.Key] = Convert.ToString(kv.Value);
             }
             else if (m.TryGetValue("installedFiles", out obj) && obj is object[])
             {
@@ -641,18 +730,18 @@ namespace BannerlordFG.Setup
                 }
             }
             object partialValue;
-            if (m.TryGetValue("movedDxgiSha256", out partialValue))
-                checksums["dxgi.dll"] = Convert.ToString(partialValue);
-            else if (!checksums.ContainsKey("dxgi.dll") && checksums.ContainsKey("OptiScaler.dll") &&
+            if (m.TryGetValue("movedProxySha256", out partialValue) ||
+                (managedProxy == "dxgi.dll" && m.TryGetValue("movedDxgiSha256", out partialValue)))
+                checksums[managedProxy] = Convert.ToString(partialValue);
+            else if (!checksums.ContainsKey(managedProxy) && checksums.ContainsKey("OptiScaler.dll") &&
                 !File.Exists(Path.Combine(gameBin, "OptiScaler.dll")))
             {
-                // An interrupted setup may have moved the official proxy just
-                // before writing movedDxgiSha256. Adopt it ONLY if its hash is
-                // identical to the manifest-owned OptiScaler.dll at that point.
-                string renamed = Path.Combine(gameBin, "dxgi.dll");
+                // Crash-safe recovery of a rename before the SHA commit, but
+                // ONLY if the selected proxy's bytes match our official DLL.
+                string renamed = Path.Combine(gameBin, managedProxy);
                 if (File.Exists(renamed) && HashFile(renamed).Equals(
                     checksums["OptiScaler.dll"], StringComparison.OrdinalIgnoreCase))
-                    checksums["dxgi.dll"] = checksums["OptiScaler.dll"];
+                    checksums[managedProxy] = checksums["OptiScaler.dll"];
             }
             if (m.TryGetValue("expectedBackupSha256", out partialValue))
                 checksums["OptiScaler.ini.bannerlordfg-original.bak"] = Convert.ToString(partialValue);
@@ -732,16 +821,13 @@ namespace BannerlordFG.Setup
             if (vendor != "NVIDIA" && vendor != "AMD" && vendor != "Intel")
                 throw new InvalidOperationException("Choose NVIDIA, AMD or Intel.");
             if (BannerlordIsRunning()) throw new InvalidOperationException("Close the game before installing.");
-            if (File.Exists(Path.Combine(gameBin, "OptiScaler.ini")) || Directory.Exists(Path.Combine(gameBin, "OptiScaler")))
-                throw new InvalidOperationException("OptiScaler is already installed. This version will not overwrite it; back up/remove the old installation first.");
-            foreach (var proxy in Proxies)
-            {
-                string proxyPath = Path.Combine(gameBin, proxy);
-                if (File.Exists(proxyPath) && !IsMicrosoftDbgHelp(proxyPath))
-                    throw new InvalidOperationException("Existing graphics DLL detected: " + proxy + ". Resolve possible ReShade conflicts before installation.");
-            }
-            if (Directory.GetFiles(gameBin, "*.addon64", SearchOption.TopDirectoryOnly).Any())
-                throw new InvalidOperationException("A ReShade addon is present. Uninstall/disable the old BannerlordFG before this test.");
+            string existing = ExistingInstallStatus(gameBin);
+            if (existing != null)
+                throw new InvalidOperationException("Installation blocked: " + existing);
+            string proxyName = SelectProxyName(gameBin);
+            log("BannerlordFG selected " + proxyName +
+                (proxyName == "winmm.dll" ? " (default)." : " (fallback: winmm.dll is occupied)."));
+            log("Other existing graphics DLLs will not be modified.");
             if (File.Exists(GetManifestPath(gameBin)))
                 throw new IOException("A previous BannerlordFG install manifest exists. Use Safe uninstall or inspect it before reinstalling.");
             bool ownsPrepared = prepared == null;
@@ -762,12 +848,18 @@ namespace BannerlordFG.Setup
                 var files = Directory.GetFiles(root, "*", SearchOption.AllDirectories);
                 if (files.Length == 0) throw new InvalidDataException("Official package is empty.");
                 var relative = files.Select(f => f.Substring(root.Length).TrimStart(Path.DirectorySeparatorChar)).ToArray();
+                // A second proxy selection protects against an external mod
+                // installing into the bin folder during the download.
+                if (ExistingInstallStatus(gameBin) != null ||
+                    !string.Equals(SelectProxyName(gameBin), proxyName, StringComparison.OrdinalIgnoreCase))
+                    throw new IOException("Graphics DLL state changed during download. Install cancelled without overwrites.");
                 var collisions = relative.Where(f => File.Exists(Path.Combine(gameBin, f))).ToArray();
                 if (collisions.Length > 0)
                     throw new IOException("Installation stopped: these target files already exist: " + string.Join(", ", collisions.Take(8)));
                 // Record which newly copied files we own; never delete or overwrite files not on this list.
                 var manifest = new Dictionary<string, object> {
                     { "gameBin", gameBin }, { "tag", Tag }, { "gpu", vendor },
+                    { "proxyFileName", proxyName },
                     { "source", url }, { "archiveSha256", actual },
                     { "timeUtc", DateTime.UtcNow.ToString("o") },
                     { "installedFiles", relative.Select((f,i) =>
@@ -801,19 +893,19 @@ namespace BannerlordFG.Setup
                 if (unattended)
                 {
                     // The pinned official setup's noninteractive essentials for a DX11 game:
-                    // rename the official OptiScaler.dll proxy to dxgi.dll and retain
-                    // default DXGI spoofing on AMD/Intel so Bannerlord exposes DLSS inputs.
-                    // We do not run upstream's optional OptiPatcher installer automatically.
+                    // Rename to the selected EARLY proxy. The external DXGI DLL
+                    // (for example ReShade) is never moved, overwritten or owned.
+                    // Preserve normal DXGI spoofing for DLSS inputs where required.
                     string originalProxy = Path.Combine(gameBin, "OptiScaler.dll");
-                    string renamedProxy = Path.Combine(gameBin, "dxgi.dll");
+                    string renamedProxy = Path.Combine(gameBin, proxyName);
                     if (!File.Exists(originalProxy) || File.Exists(renamedProxy))
-                        throw new IOException("Official injector DLL missing or dxgi.dll already exists. Setup stopped safely.");
+                        throw new IOException("Official injector DLL missing or " + proxyName + " already exists. Setup stopped safely.");
                     File.Move(originalProxy, renamedProxy);
                     // Crash/reconfiguration failures must not strand an untracked
                     // renamed injector. Commit its ownership before patching INI.
-                    manifest["movedDxgiSha256"] = HashFile(renamedProxy);
+                    manifest["movedProxySha256"] = HashFile(renamedProxy);
                     File.WriteAllText(manifestPath, new JavaScriptSerializer().Serialize(manifest));
-                    log("Official OptiScaler.dll installed as dxgi.dll for Bannerlord DX11.");
+                    log("Official OptiScaler.dll installed as " + proxyName + " for Bannerlord DX11.");
                 }
                 else
                 {
@@ -867,14 +959,13 @@ namespace BannerlordFG.Setup
                     string file = Path.Combine(gameBin, rel);
                     if (File.Exists(file)) finalFiles[rel] = HashFile(file);
                 }
-                // Track ONLY the proxy created by our own File.Move above.
+                // Track ONLY the selected proxy created by our own File.Move.
                 // Never adopt an external proxy merely because it appears in the
                 // same game directory between initial scan and manifest creation.
                 if (unattended)
                 {
-                    const string createdProxy = "dxgi.dll";
-                    string proxyPath = Path.Combine(gameBin, createdProxy);
-                    if (File.Exists(proxyPath)) finalFiles[createdProxy] = HashFile(proxyPath);
+                    string proxyPath = Path.Combine(gameBin, proxyName);
+                    if (File.Exists(proxyPath)) finalFiles[proxyName] = HashFile(proxyPath);
                 }
                 string cfgBackup = ini + ".bannerlordfg-original.bak";
                 if (File.Exists(cfgBackup)) finalFiles[Path.GetFileName(cfgBackup)] = HashFile(cfgBackup);

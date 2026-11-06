@@ -1,9 +1,9 @@
-BannerlordFG v1.0.4 - Recovery guide
+BannerlordFG v1.1.0 - Recovery guide
 ====================================
 
-AUTOMATIC RECOVERY IN v1.0.4
+AUTOMATIC RECOVERY (CURRENT PIN: nightly-20261106)
 When you click Install, an INCOMPLETE installation from a recognized
-BannerlordFG OptiScaler release (20260926 or 20261016) can be recovered
+BannerlordFG OptiScaler release (20260926, 20261016 or 20261106) can be recovered
 automatically after Bannerlord closes. The helper verifies the old manifest,
 checks owned file hashes, saves a copy of the manifest and any changed managed
 INI files, then installs the current pinned release. You do not need to run
@@ -55,6 +55,9 @@ COMMON ISSUES
 - Script or helper is missing: restore the complete mod ZIP and retry.
 - Unknown or modified graphics files: stop. The mod protects these files
   to avoid deleting files installed by another tool or another mod.
+- With ReShade, an external dxgi.dll can remain after BannerlordFG uninstall.
+  This is expected if the manifest recorded BannerlordFG's proxy as winmm.dll.
+  Do not remove another mod's dxgi.dll.
 - OptiScaler files or backups are missing: read the log before changing
   anything manually.
 

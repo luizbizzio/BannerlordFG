@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
-rem Run after BUILD_WINDOWS.cmd deployed v1.0.4 Does not download or reinstall anything.
+rem Run after BUILD_WINDOWS.cmd deployed v1.1.0. Does not download or reinstall anything.
 set "GAME=C:\Program Files (x86)\Steam\steamapps\common\Mount & Blade II Bannerlord"
 set "GAMEBIN=%GAME%\bin\Win64_Shipping_Client"
 set "HELPER=%GAME%\Modules\BannerlordFG\bin\Win64_Shipping_Client\BannerlordFG.Helper.cmd"
@@ -11,7 +11,7 @@ if not exist "%HELPER%" (
   echo [ERROR] Updated BannerlordFG.Helper.cmd not found. Run BUILD_WINDOWS.cmd first.
   exit /b 1
 )
-if not exist "%GAMEBIN%\Bannerlord.exe" if not exist "%GAMEBIN%\Bannerlord.Native.exe" (
+if not exist "%GAMEBIN%\Bannerlord.exe" if not exist "%GAMEBIN%\Bannerlord.Native.exe" if not exist "%GAMEBIN%\TaleWorlds.MountAndBlade.Launcher.exe" (
   echo [ERROR] Bannerlord executable not found.
   exit /b 1
 )
@@ -19,6 +19,8 @@ tasklist /FI "IMAGENAME eq Bannerlord.exe" | find /I "Bannerlord.exe" >nul
 if not errorlevel 1 (echo [ERROR] Close Bannerlord first. & exit /b 1)
 tasklist /FI "IMAGENAME eq Bannerlord.Native.exe" | find /I "Bannerlord.Native.exe" >nul
 if not errorlevel 1 (echo [ERROR] Close Bannerlord.Native first. & exit /b 1)
+tasklist /FI "IMAGENAME eq TaleWorlds.MountAndBlade.Launcher.exe" | find /I "TaleWorlds.MountAndBlade.Launcher.exe" >nul
+if not errorlevel 1 (echo [ERROR] Close the TaleWorlds game process first. & exit /b 1)
 echo [1/3] Preserving prior manifests and logs...
 if exist "%BACKUP%\" (echo [ERROR] Backup path collision. Retry. & exit /b 1)
 mkdir "%BACKUP%" >nul 2>nul
@@ -45,11 +47,11 @@ if exist "%GAMEBIN%\OptiScaler.ini" (
   echo Log: "%STATE%\first-run.log"
   exit /b 3
 )
-if exist "%GAMEBIN%\dxgi.dll" (
-  echo [WARNING] dxgi.dll still exists. It may be third-party or modified. No overwrite will be attempted.
-  echo Log: "%STATE%\first-run.log"
-  exit /b 3
-)
+rem An existing DXGI or WinMM may belong to ReShade or another mod.
+rem The hash-verified maintenance helper is responsible for removing only
+rem BannerlordFG-owned files. These remaining proxies are not a failure.
+if exist "%GAMEBIN%\dxgi.dll" echo [INFO] Existing dxgi.dll preserved ^(not necessarily owned by BannerlordFG^).
+if exist "%GAMEBIN%\winmm.dll" echo [INFO] Existing winmm.dll preserved ^(not necessarily owned by BannerlordFG^).
 if exist "%GAMEBIN%\OptiScaler\" (
   echo [WARNING] OptiScaler directory still exists. Check for files before reinstalling.
   echo Log: "%STATE%\first-run.log"
