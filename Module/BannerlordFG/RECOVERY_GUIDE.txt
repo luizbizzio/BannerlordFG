@@ -1,7 +1,7 @@
-BannerlordFG v1.1.0 - Recovery guide
+BannerlordFG v1.1.1 - Recovery guide
 ====================================
 
-AUTOMATIC RECOVERY (CURRENT PIN: nightly-20261106)
+AUTOMATIC RECOVERY (CURRENT PIN: nightly-20261109)
 When you click Install, an INCOMPLETE installation from a recognized
 BannerlordFG OptiScaler release (20260926, 20261016 or 20261106) can be recovered
 automatically after Bannerlord closes. The helper verifies the old manifest,

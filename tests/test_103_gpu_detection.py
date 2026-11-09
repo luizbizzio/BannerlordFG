@@ -54,7 +54,7 @@ def test_probe_cannot_block_install_if_telemetry_fails():
 
 def test_gpu_probe_is_before_optiscaler_download():
     run = AUTO.split('internal static void Run(string requestedGameBin, int waitPid)', 1)[1]
-    assert run.index('DetectGpu(gameBin, waitPid)') < run.index('PrepareOfficialPackageAsync(Log)')
+    assert run.index('DetectGpu(gameBin, waitPid)') < run.index('PrepareOfficialPackageAsync(')
 
 
 def test_windows_gpu_engine_uses_pdh_not_broken_wmi_formatted_utilization():

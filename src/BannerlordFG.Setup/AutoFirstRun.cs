@@ -48,6 +48,36 @@ namespace BannerlordFG.Setup
             catch { /* A log failure must not affect the running game. */ }
         }
 
+        // One small per-game status marker shared with the game process. The
+        // helper may run elevated or under a different UAC account; its state
+        // directory was already validated by MaintenanceEntry. Never use the
+        // append-only first-run.log as a progress transport.
+        private static void PublishProgress(string gameBin, string stage,
+            int percent, long received, long total)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(gameBin)) return;
+                string path = StatePath(gameBin, ".progress");
+                string value = stage + "|" + percent + "|" +
+                    Math.Max(0L, received) + "|" + Math.Max(0L, total);
+                string temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                File.WriteAllText(temp, value, new UTF8Encoding(false));
+                try
+                {
+                    if (File.Exists(path)) File.Replace(temp, path, null);
+                    else File.Move(temp, path);
+                }
+                finally { if (File.Exists(temp)) File.Delete(temp); }
+            }
+            catch (Exception ex)
+            {
+                // Status display is optional: it must never interrupt the
+                // verified download or installation.
+                Log("Progress status unavailable: " + ex.Message);
+            }
+        }
+
         // First identify Bannerlord.exe's active 3D rendering adapter by PID +
         // DXGI LUID. If Windows does not expose reliable GPU Engine activity,
         // use a deterministic, no-prompt NVIDIA > AMD > Intel hardware fallback.
@@ -147,6 +177,56 @@ namespace BannerlordFG.Setup
             return result.ToString();
         }
 
+        // A surviving launcher window is not necessarily the running game.
+        // Unlike the STRICT installation/uninstall guard, the relaunch guard
+        // ignores a launcher-only process, but never an actual renderer host.
+        // Access errors are treated as active to avoid starting duplicates.
+        private static bool GameHostActiveForRelaunch(string gameBin)
+        {
+            string ownedProxy = OptiInstaller.GetManagedProxyName(gameBin);
+            string proxyPath = ownedProxy == null ? null :
+                Path.GetFullPath(Path.Combine(gameBin, ownedProxy));
+            foreach (Process process in Process.GetProcesses())
+            {
+                try
+                {
+                    string name = process.ProcessName;
+                    bool launcher = name.Equals("TaleWorlds.MountAndBlade.Launcher", StringComparison.OrdinalIgnoreCase);
+                    if (!launcher &&
+                        !name.Equals("Bannerlord", StringComparison.OrdinalIgnoreCase) &&
+                        !name.Equals("Bannerlord.Native", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (process.HasExited) continue;
+                    string exe = Path.GetFullPath(process.MainModule.FileName);
+                    if (!string.Equals(Path.GetDirectoryName(exe).TrimEnd('\\'),
+                        gameBin.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!launcher) return true;
+                    // Bannerlord may host the game inside the launcher executable.
+                    // Do not mistake that renderer host for a harmless launcher.
+                    if (proxyPath == null) return true;
+                    foreach (ProcessModule module in process.Modules)
+                    {
+                        string moduleName = Path.GetFileName(module.FileName);
+                        if (string.Equals(Path.GetFullPath(module.FileName), proxyPath,
+                                StringComparison.OrdinalIgnoreCase) ||
+                            moduleName.Equals("TaleWorlds.Engine.dll", StringComparison.OrdinalIgnoreCase) ||
+                            moduleName.Equals("TaleWorlds.MountAndBlade.dll", StringComparison.OrdinalIgnoreCase))
+                            return true;
+                    }
+                    Log("Relaunch: ignoring launcher-only process PID " + process.Id + ".");
+                }
+                catch (InvalidOperationException) { /* Process exited during scan. */ }
+                catch (ArgumentException) { /* Process exited during scan. */ }
+                catch (Exception ex)
+                {
+                    Log("Relaunch: unable to classify active process safely: " + ex.Message);
+                    return true;
+                }
+                finally { process.Dispose(); }
+            }
+            return false;
+        }
+
         private static void RelaunchDirect(string gameBin, int waitPid)
         {
             try
@@ -158,11 +238,6 @@ namespace BannerlordFG.Setup
                     return;
                 }
                 File.Delete(marker); // one-shot authorization; no restart loops
-                if (OptiInstaller.BannerlordIsRunning())
-                {
-                    Log("Direct relaunch skipped: another Bannerlord instance is active.");
-                    return;
-                }
                 string launch = StatePath(gameBin, ".launch");
                 if (!File.Exists(launch))
                 {
@@ -196,9 +271,17 @@ namespace BannerlordFG.Setup
                     throw new InvalidDataException("Original game arguments contain invalid characters.");
                 if (!string.Join(" ", args).Contains("_MODULES_"))
                     Log("Direct relaunch: no _MODULES_ CLI argument; game may use its saved module configuration.");
-                // Allow Steam's bookkeeping to observe the normal game shutdown.
+                // Allow Steam's bookkeeping to observe the normal shutdown.
+                // The old guard counted a launcher-only window as a running
+                // game and silently abandoned relaunch. We now distinguish
+                // the launcher from a renderer host, without creating duplicates.
                 Thread.Sleep(5000);
-                if (OptiInstaller.BannerlordIsRunning()) return;
+                if (GameHostActiveForRelaunch(gameBin))
+                {
+                    Log("Direct relaunch not needed: Bannerlord was already opened " +
+                        "(possibly manually). Avoiding a duplicate game instance.");
+                    return;
+                }
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = exe,
@@ -399,7 +482,10 @@ namespace BannerlordFG.Setup
                 Log("Detecting Bannerlord renderer first; falling back to NVIDIA > AMD > Intel when necessary...");
                 string gpu = DetectGpu(gameBin, waitPid);
                 Log("GPU automatically detected: " + gpu);
-                package = Task.Run(() => OptiInstaller.PrepareOfficialPackageAsync(Log))
+                PublishProgress(gameBin, "preparing", -1, 0, 0);
+                package = Task.Run(() => OptiInstaller.PrepareOfficialPackageAsync(
+                    Log, (stage, percent, received, total) =>
+                        PublishProgress(gameBin, stage, percent, received, total)))
                     .GetAwaiter().GetResult();
                 package.Verify();
                 if (File.Exists(StatePath(gameBin, ".disabled")))
@@ -447,6 +533,9 @@ namespace BannerlordFG.Setup
             finally
             {
                 if (package != null) package.Dispose();
+                if (gameBin != null)
+                    try { File.Delete(StatePath(gameBin, ".progress")); }
+                    catch (Exception ex) { Log("Progress marker cleanup: " + ex.Message); }
                 if (ready != null) try { File.Delete(ready); } catch (Exception ex) { Log("Ready marker cleanup: " + ex.Message); }
                 if (pending != null) try { File.Delete(pending); } catch (Exception ex) { Log("Pending marker cleanup: " + ex.Message); }
                 markersCleared = (ready == null || !File.Exists(ready)) &&

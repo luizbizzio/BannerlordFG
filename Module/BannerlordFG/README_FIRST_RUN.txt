@@ -1,4 +1,4 @@
-BannerlordFG v1.1.0 - Player instructions
+BannerlordFG v1.1.1 - Player instructions
 =======================================
 
 INSTALL
@@ -6,11 +6,12 @@ INSTALL
 2. Enable BannerlordFG in the Bannerlord launcher.
 3. Start the game and open Options > Performance > Frame Generation.
 4. Select OptiScaler > Install, confirm, and follow the on-screen prompts.
-   BannerlordFG downloads and verifies OptiScaler. When initial setup needs
-   the game to restart, it normally closes and relaunches the game
-   automatically after your confirmation. If it cannot recover the original
-   launch settings, follow the in-game instructions and relaunch via your
-   usual launcher instead.
+   The installer shows download progress, verification and extraction stages.
+   BannerlordFG prepares the verified files before it closes the game.
+   Once ready, it closes the game, copies the files, and attempts to reopen
+   Bannerlord automatically. Do not manually reopen it while setup finishes.
+   If the log reports that relaunch was unsafe or failed, reopen the game
+   through your normal launcher once installation is complete.
 
 USE
 A compatible GPU supporting FSR or DLSS is required. A supported upscaling
@@ -38,11 +39,20 @@ NOTES
 - On AMD or Intel GPUs, use DLSS Quality as Bannerlord's input option
   after installation, even if OptiScaler uses FSR for upscaling.
 - OptiScaler files are downloaded separately and are not inside this ZIP.
-- This build downloads official OptiScaler nightly-20261106 and checks SHA-256.
+- This build downloads official OptiScaler nightly-20261109 and checks SHA-256.
 - BannerlordFG prefers winmm.dll to reduce DXGI conflicts (e.g. ReShade).
   If another mod already uses winmm.dll, BannerlordFG falls back to dxgi.dll
   when that name is free. Existing DLLs are never overwritten.
 - If both dxgi.dll and winmm.dll are already occupied, installation stops.
+- ReShade workaround (if the ReShade overlay does not open): close Bannerlord,
+  verify dxgi.dll belongs to ReShade and that d3d11.dll is free, then rename
+  only the ReShade dxgi.dll to d3d11.dll. An existing d3d11.dll no longer
+  blocks setup simply because it exists; it is never modified or claimed.
+  Other unsupported hooks and actual filename collisions still block; no DLLs
+  are automatically renamed. Coexistence is not guaranteed on all setups.
+  Once OptiScaler is installed, set LoadReshade=false under [Plugins] in
+  OptiScaler.ini. This is a tested manual workaround, not a universal guarantee.
+  ReShade menu hotkey F9: set KeyOverlay=120,0,0,0 in ReShade.ini.
 - Existing complete managed installs must be safely uninstalled before upgrade.
 - The installer extracts the official 7z with SharpCompress, without Windows tar.exe.
 - Keep the extractor DLLs in the mod's bin folder when installing.

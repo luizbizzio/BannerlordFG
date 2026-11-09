@@ -14,7 +14,7 @@ class FirstRunChecks(unittest.TestCase):
     def test_launcher_uses_bannerlordfg_name(self):
         xml = ET.parse(ROOT / 'Module/BannerlordFG/SubModule.xml').getroot()
         self.assertEqual(xml.find('Name').attrib['value'], 'BannerlordFG')
-        self.assertEqual(xml.find('Version').attrib['value'], 'v1.1.0')
+        self.assertEqual(xml.find('Version').attrib['value'], 'v1.1.1')
         self.assertTrue(xml.find('SubModules/SubModule/DLLName').attrib['value'] == 'BannerlordFG.dll')
 
     def test_first_run_only_on_clean_install(self):
@@ -39,7 +39,7 @@ class FirstRunChecks(unittest.TestCase):
 
     def test_download_verification_precedes_exit(self):
         run = AUTO.split('internal static void Run(string requestedGameBin, int waitPid)', 1)[1]
-        self.assertLess(run.index('PrepareOfficialPackageAsync(Log)'), run.index('WriteAtomic(ready, waitPid.ToString())'))
+        self.assertLess(run.index('PrepareOfficialPackageAsync('), run.index('WriteAtomic(ready, waitPid.ToString())'))
         self.assertIn('package.Verify();', run)
         self.assertIn('File.ReadAllText(ready).Trim() == _pid.ToString()', SUB)
 

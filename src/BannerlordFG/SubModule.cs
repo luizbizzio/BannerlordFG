@@ -35,6 +35,7 @@ namespace BannerlordFG
         private float _uninstallAckElapsed;
         private DateTime _uninstallAckDeadline;
         private bool _noticeVisible;
+        private string _lastProgressNotice;
         private bool _manualInstallRequested;
         // Auto-close from an active campaign only after explicit consent.
         // Main-menu installs keep their existing automatic relaunch behavior.
@@ -223,6 +224,7 @@ namespace BannerlordFG
                 {
                     _pollElapsed = 0;
                     CheckWorker();
+                    RefreshSetupProgress();
                 }
             }
             if (_guardFailed || _controller == null || !_controller.NativeDlssManaged ||
@@ -460,24 +462,99 @@ namespace BannerlordFG
             return ids;
         }
 
+        private static string FormatSetupProgress(string raw)
+        {
+            const string footer = "\n\nOnce verified, Bannerlord will close normally to install OptiScaler " +
+                "and reopen when possible. You can cancel the installation.";
+            if (string.IsNullOrEmpty(raw))
+                return "Starting the installer. Waiting for Windows administrator approval..." + footer;
+            string[] parts = raw.Split('|');
+            int percent;
+            long received;
+            long total;
+            if (parts.Length != 4 || raw.Length > 128 ||
+                !int.TryParse(parts[1], out percent) ||
+                !long.TryParse(parts[2], out received) ||
+                !long.TryParse(parts[3], out total) ||
+                received < 0 || total < 0 || percent < -1 || percent > 100)
+                return "Preparing OptiScaler. Check first-run.log if this takes too long." + footer;
+            if (parts[0] == "preparing") return "Checking the game and GPU..." + footer;
+            if (parts[0] == "connecting") return "Connecting to GitHub..." + footer;
+            if (parts[0] == "verifying")
+                return "Download complete. Verifying the official SHA-256 checksum..." + footer;
+            if (parts[0] == "extracting")
+                return "Download verified. Preparing OptiScaler files before closing the game..." + footer;
+            if (parts[0] == "verified")
+                return "OptiScaler downloaded and verified. Preparing a safe restart..." + footer;
+            if (parts[0] != "downloading")
+                return "Preparing OptiScaler..." + footer;
+            if (percent >= 0)
+            {
+                int filled = Math.Min(20, percent / 5);
+                string bar = "[" + new string('#', filled) +
+                    new string('-', 20 - filled) + "]";
+                return "Downloading OptiScaler: " + percent + "%\n" + bar + footer;
+            }
+            return "Downloading OptiScaler: " + (received / (1024L * 1024L)) +
+                " MB received (total size not provided)." + footer;
+        }
+
         private void ShowSetupNotice()
         {
             if (_noticeVisible) return;
             try
             {
+                _lastProgressNotice = null;
                 InformationManager.ShowInquiry(new InquiryData(
                     "Installing OptiScaler",
-                    "Downloading and verifying OptiScaler. When ready, Bannerlord will close normally, install it, and reopen automatically.",
+                    FormatSetupProgress(null),
                     false, true, "", "Cancel", null, () => CancelAutomaticSetup()), false, true);
                 _noticeVisible = true;
             }
             catch (Exception ex)
             {
-                // Without a blocking modal, gameplay might continue. Do not
-                // automatically close a campaign on a stale confirmation.
                 if (_enteredGameplay) _autoRestartInstallApproved = false;
                 Log("Could not display setup inquiry: " + ex.Message);
                 try { InformationManager.DisplayMessage(new InformationMessage("BannerlordFG: downloading OptiScaler.")); } catch { }
+            }
+        }
+
+        private void RefreshSetupProgress()
+        {
+            // Read at most once each 500 ms during a pending installation.
+            // Reopen the standard inquiry only when a 10% download milestone
+            // or phase changes, so no custom UI hooks or per-frame updates.
+            if (!_noticeVisible) return;
+            string raw = null;
+            try
+            {
+                string path = State(".progress");
+                if (!File.Exists(path)) return;
+                var info = new FileInfo(path);
+                if (info.Length > 128 || info.Length == 0) return;
+                raw = File.ReadAllText(path);
+            }
+            catch (IOException) { return; } // Atomic replacement race.
+            catch (UnauthorizedAccessException) { return; }
+            if (raw == null || raw == _lastProgressNotice) return;
+            string display = FormatSetupProgress(raw);
+            try
+            {
+                // InquiryData isn't an observable Gauntlet ViewModel.
+                // A new standard inquiry reliably renders the updated text.
+                InformationManager.HideInquiry();
+                _noticeVisible = false;
+                InformationManager.ShowInquiry(new InquiryData(
+                    "Installing OptiScaler", display,
+                    false, true, "", "Cancel", null, () => CancelAutomaticSetup()), false, true);
+                _noticeVisible = true;
+                _lastProgressNotice = raw;
+            }
+            catch (Exception ex)
+            {
+                Log("OptiScaler progress UI unavailable: " + ex.Message);
+                // Never block the maintenance worker because of a UI error.
+                if (!_noticeVisible) ShowSetupNotice();
             }
         }
 
@@ -533,9 +610,15 @@ namespace BannerlordFG
             bool winmmExists = File.Exists(Path.Combine(_gameBin, "winmm.dll"));
             if (dxgiExists && winmmExists)
                 return "Both winmm.dll and dxgi.dll exist. The installer cannot safely select a proxy.";
-            foreach (string proxy in new[] { "version.dll", "d3d11.dll", "d3d12.dll", "wininet.dll", "winhttp.dll" })
+            // Keep this lightweight UI preflight aligned with the helper:
+            // d3d11.dll is external and never a BannerlordFG proxy target.
+            // The helper separately checks for unmanaged OptiScaler and exact
+            // file collisions after the official package is downloaded.
+            foreach (string proxy in new[] { "version.dll", "d3d12.dll", "wininet.dll", "winhttp.dll" })
+            {
                 if (File.Exists(Path.Combine(_gameBin, proxy)))
                     return "Another graphics-hook DLL already exists: " + proxy + ". No external file will be overwritten.";
+            }
             return null;
         }
 
@@ -557,6 +640,7 @@ namespace BannerlordFG
 
         private void CloseNotice()
         {
+            _lastProgressNotice = null;
             if (!_noticeVisible) return;
             try { InformationManager.HideInquiry(); } catch (Exception ex) { Log("Hide inquiry: " + ex.Message); }
             _noticeVisible = false;
@@ -874,7 +958,7 @@ namespace BannerlordFG
                 }
                 if (string.IsNullOrEmpty(_helper) || !File.Exists(_helper))
                     throw new FileNotFoundException("BannerlordFG.Helper.cmd is missing from the installed module. Rebuild and reinstall BannerlordFG first.");
-                foreach (var key in new[] { ".ready", ".restart", ".blocked", ".helper-started" })
+                foreach (var key in new[] { ".ready", ".restart", ".blocked", ".helper-started", ".progress" })
                     try { File.Delete(State(key)); } catch { }
                 if (explicitlyRequested) try { File.Delete(State(".disabled")); } catch { }
                 _readyNoticeGiven = false;

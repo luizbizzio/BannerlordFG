@@ -18,12 +18,16 @@ namespace BannerlordFG.Setup
     /// <summary>Pinned OptiScaler downloader. OptiScaler is not bundled; extraction uses SharpCompress.</summary>
     internal static class OptiInstaller
     {
-        internal const string Tag = "nightly-20261106";
-        internal const string AssetName = "OptiScaler_v10.0.0-pre1_20261106.7z";
-        // Official GitHub release asset SHA-256, verified 2026-11-06.
-        internal const string PinnedSha256 = "5b92e637cdead99c8d994360850407e93876f00b5f0776f2be39a1ee2caa5726";
+        internal const string Tag = "nightly-20261109";
+        internal const string AssetName = "OptiScaler_v10.0.0-pre1_20261109.7z";
+        // Official GitHub release asset SHA-256, published 2026-11-09.
+        internal const string PinnedSha256 = "e65cfc7092840cde79b24467bf0b3404bc358e56866478f46811eed06ffaa150";
         // Legacy releases are recognized ONLY for safe, hash-verified recovery/uninstall.
         // They are not downloaded or installed by this build.
+        // Prior v1.1.1 builds were pinned to 20261106. Keep that exact
+        // release/digest pair recognized for safe recovery (never download it).
+        private const string PriorTag = "nightly-20261106";
+        private const string PriorPinnedSha256 = "5b92e637cdead99c8d994360850407e93876f00b5f0776f2be39a1ee2caa5726";
         private const string PreviousTag = "nightly-20261016";
         private const string PreviousPinnedSha256 = "09149a5b17514a0594faf612467267c62ed8851dbc1dde0ade6763f1152e600f";
         private const string LegacyTag = "nightly-20260926";
@@ -32,6 +36,8 @@ namespace BannerlordFG.Setup
         {
             return (string.Equals(tag, Tag, StringComparison.Ordinal) &&
                     string.Equals(digest, PinnedSha256, StringComparison.OrdinalIgnoreCase)) ||
+                   (string.Equals(tag, PriorTag, StringComparison.Ordinal) &&
+                    string.Equals(digest, PriorPinnedSha256, StringComparison.OrdinalIgnoreCase)) ||
                    (string.Equals(tag, PreviousTag, StringComparison.Ordinal) &&
                     string.Equals(digest, PreviousPinnedSha256, StringComparison.OrdinalIgnoreCase)) ||
                    (string.Equals(tag, LegacyTag, StringComparison.Ordinal) &&
@@ -147,8 +153,14 @@ namespace BannerlordFG.Setup
                 if (!File.Exists(path)) continue;
                 if (LooksLikeOptiScaler(path))
                     return proxy + " already contains OptiScaler without our manifest. Preserve it for manual recovery.";
+                // winmm.dll and dxgi.dll are the ONLY possible BannerlordFG
+                // proxy filenames. A pre-existing d3d11.dll is an external hook
+                // and does not occupy either of our selected proxy names.
+                // Do not claim, modify or overwrite it. Continue to reject a
+                // standalone OptiScaler (checked above) and all other hooks.
                 if (proxy.Equals("winmm.dll", StringComparison.OrdinalIgnoreCase) ||
-                    proxy.Equals("dxgi.dll", StringComparison.OrdinalIgnoreCase))
+                    proxy.Equals("dxgi.dll", StringComparison.OrdinalIgnoreCase) ||
+                    proxy.Equals("d3d11.dll", StringComparison.OrdinalIgnoreCase))
                     continue;
                 return proxy + " is already occupied by another component. Leaving it untouched.";
             }
@@ -235,11 +247,35 @@ namespace BannerlordFG.Setup
             internal string Archive;
             internal string OfficialUrl;
             internal string Sha256;
+            // Extract into a private temporary folder while Bannerlord is still open.
+            // The closed-game phase only copies files and commits the manifest.
+            internal string ExtractedRoot;
+            internal Dictionary<string, string> ExtractedHashes;
             internal void Verify()
             {
                 if (string.IsNullOrEmpty(Archive) || !File.Exists(Archive) ||
                     !HashFile(Archive).Equals(Sha256, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("Prepared release archive was modified or removed.");
+                if (string.IsNullOrEmpty(ExtractedRoot) || ExtractedHashes == null ||
+                    ExtractedHashes.Count == 0 || !Directory.Exists(ExtractedRoot))
+                    throw new InvalidDataException("Verified OptiScaler extraction is not ready.");
+                string unpacked = Path.GetFullPath(Path.Combine(Folder, "unpacked"))
+                    .TrimEnd(Path.DirectorySeparatorChar);
+                string extracted = Path.GetFullPath(ExtractedRoot).TrimEnd(Path.DirectorySeparatorChar);
+                if (!string.Equals(extracted, unpacked, StringComparison.OrdinalIgnoreCase) &&
+                    !extracted.StartsWith(unpacked + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("Extracted OptiScaler package escaped its temporary directory.");
+                var files = Directory.GetFiles(ExtractedRoot, "*", SearchOption.AllDirectories);
+                if (files.Length != ExtractedHashes.Count)
+                    throw new InvalidDataException("Prepared OptiScaler file list was modified.");
+                foreach (string file in files)
+                {
+                    string relative = file.Substring(ExtractedRoot.Length).TrimStart(Path.DirectorySeparatorChar);
+                    string expected;
+                    if (!ExtractedHashes.TryGetValue(relative, out expected) ||
+                        !HashFile(file).Equals(expected, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("Prepared OptiScaler file changed: " + relative);
+                }
             }
             public void Dispose()
             {
@@ -249,7 +285,8 @@ namespace BannerlordFG.Setup
             }
         }
 
-        internal static async Task<PreparedPackage> PrepareOfficialPackageAsync(Action<string> log)
+        internal static async Task<PreparedPackage> PrepareOfficialPackageAsync(Action<string> log,
+            Action<string, int, long, long> progress = null)
         {
             var pkg = new PreparedPackage {
                 Folder = Path.Combine(Path.GetTempPath(), "BannerlordFG_" + Guid.NewGuid().ToString("N"))
@@ -260,9 +297,10 @@ namespace BannerlordFG.Setup
                 ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
                 string json;
                 log("Requesting pinned OptiScaler release metadata from GitHub...");
+                if (progress != null) progress("connecting", -1, 0, 0);
                 using (var client = new WebClient())
                 {
-                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.1.0";
+                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.1.1";
                     client.Headers[HttpRequestHeader.Accept] = "application/vnd.github+json";
                     json = await WithDownloadDeadline(client.DownloadStringTaskAsync(Api), client,
                         TimeSpan.FromSeconds(35), "GitHub release metadata");
@@ -270,26 +308,51 @@ namespace BannerlordFG.Setup
                 var release = SelectOfficialAsset(ParseJsonObject(json));
                 log("Release metadata received. Selecting and verifying the official archive...");
                 pkg.OfficialUrl = Str(release, "browser_download_url");
+                long declaredAssetBytes = long.Parse(Str(release, "size")); // Validated by SelectOfficialAsset.
                 string declaredDigest = Str(release, "digest");
                 if (declaredDigest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) &&
                     !declaredDigest.Substring(7).Equals(PinnedSha256, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("Official GitHub release asset digest changed: refusing untested build.");
                 pkg.Archive = Path.Combine(pkg.Folder, "official-optiscaler.7z");
                 log("Downloading pinned official build: " + Tag);
+                if (progress != null) progress("downloading", 0, 0, 0);
                 using (var client = new WebClient())
                 {
-                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.1.0";
-                    int nextPercent = 25;
+                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.1.1";
+                    int nextLogPercent = 25;
+                    int lastReportedBucket = -1;
                     client.DownloadProgressChanged += (sender, args) => {
-                        if (args.ProgressPercentage < nextPercent) return;
-                        log("Official archive download " + args.ProgressPercentage + "% (" +
-                            args.BytesReceived + " bytes received).");
-                        nextPercent = ((args.ProgressPercentage / 25) + 1) * 25;
+                        // Use real byte counts. A missing Content-Length means
+                        // progress is indeterminate; never invent a percentage.
+                        // GitHub's release metadata provides a validated size
+                        // even when the download response omits Content-Length.
+                        long total = args.TotalBytesToReceive > 0
+                            ? args.TotalBytesToReceive : declaredAssetBytes;
+                        long received = args.BytesReceived;
+                        int percent = total > 0
+                            ? (int)Math.Min(100L, received * 100L / total) : -1;
+                        int bucket = percent >= 0 ? percent / 10 :
+                            (int)Math.Min(int.MaxValue, received / (1024L * 1024L));
+                        if (bucket != lastReportedBucket)
+                        {
+                            lastReportedBucket = bucket;
+                            if (progress != null)
+                                progress("downloading", percent >= 0 ? bucket * 10 : -1,
+                                    received, total);
+                        }
+                        if (percent >= nextLogPercent)
+                        {
+                            log("Official archive download " + percent + "% (" +
+                                received + " bytes received).");
+                            nextLogPercent = ((percent / 25) + 1) * 25;
+                        }
                     };
                     await WithDownloadDeadline(client.DownloadFileTaskAsync(
                         new Uri(pkg.OfficialUrl), pkg.Archive), client,
                         TimeSpan.FromMinutes(4), "OptiScaler release archive");
                 }
+                if (progress != null)
+                    progress("verifying", -1, new FileInfo(pkg.Archive).Length, 0);
                 pkg.Sha256 = HashFile(pkg.Archive);
                 if (!pkg.Sha256.Equals(PinnedSha256, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("Official archive SHA-256 differs from the pinned build. Installation aborted.");
@@ -301,7 +364,31 @@ namespace BannerlordFG.Setup
                     log("Downloaded archive SHA256 verified against GitHub metadata.");
                 }
                 else log("Release digest missing; archive verified against the pinned local SHA256.");
+                // The 7z extraction used to consume about a minute AFTER the
+                // game closed. Users could reopen Bannerlord during that gap,
+                // racing the graphics DLL copy and suppressing the relaunch.
+                // Unpack the hash-verified archive into temporary storage NOW,
+                // without touching the game's bin folder while it is running.
+                if (progress != null) progress("extracting", -1, 0, 0);
+                log("Extracting verified OptiScaler archive in temporary storage before game shutdown...");
+                string unpacked = Path.Combine(pkg.Folder, "unpacked");
+                Directory.CreateDirectory(unpacked);
+                await Task.Run(() => ExtractSafe(pkg.Archive, unpacked));
+                pkg.ExtractedRoot = FindPackageRoot(unpacked);
+                var extractedFiles = Directory.GetFiles(pkg.ExtractedRoot, "*", SearchOption.AllDirectories);
+                if (extractedFiles.Length == 0) throw new InvalidDataException("Official package is empty.");
+                pkg.ExtractedHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (string file in extractedFiles)
+                {
+                    string relative = file.Substring(pkg.ExtractedRoot.Length).TrimStart(Path.DirectorySeparatorChar);
+                    if (pkg.ExtractedHashes.ContainsKey(relative))
+                        throw new InvalidDataException("Duplicate extracted file name: " + relative);
+                    pkg.ExtractedHashes.Add(relative, HashFile(file));
+                }
                 pkg.Verify();
+                log("OptiScaler archive and extracted files verified. Game files remain untouched until shutdown.");
+                if (progress != null)
+                    progress("verified", 100, new FileInfo(pkg.Archive).Length, 0);
                 return pkg;
             }
             catch
@@ -837,17 +924,19 @@ namespace BannerlordFG.Setup
             {
                 if (pkg == null) pkg = await PrepareOfficialPackageAsync(log);
                 pkg.Verify();
-                string folder = pkg.Folder;
-                string extracted = Path.Combine(folder, "unpacked");
-                Directory.CreateDirectory(extracted);
                 string url = pkg.OfficialUrl;
                 string actual = pkg.Sha256;
-                log("Extracting the verified official 7z after Bannerlord has closed...");
-                await Task.Run(() => ExtractSafe(pkg.Archive, extracted));
-                string root = FindPackageRoot(extracted);
+                // The prepared, hash-checked files were already extracted while
+                // the game was open. Keep the post-exit write window short.
+                string root = pkg.ExtractedRoot;
                 var files = Directory.GetFiles(root, "*", SearchOption.AllDirectories);
                 if (files.Length == 0) throw new InvalidDataException("Official package is empty.");
                 var relative = files.Select(f => f.Substring(root.Length).TrimStart(Path.DirectorySeparatorChar)).ToArray();
+                // The game may have been manually reopened between the initial
+                // post-exit check and the final copy. Never write loaded DLLs.
+                if (BannerlordIsRunning())
+                    throw new IOException("Bannerlord reopened while OptiScaler was being prepared. " +
+                        "Close the game before installing; no graphics files were copied.");
                 // A second proxy selection protects against an external mod
                 // installing into the bin folder during the download.
                 if (ExistingInstallStatus(gameBin) != null ||

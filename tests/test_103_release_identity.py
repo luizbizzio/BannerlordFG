@@ -1,4 +1,4 @@
-"""Guard against shipping preview source with an outdated v1.1.0 identity."""
+"""Guard against shipping preview source with an outdated v1.1.1 identity."""
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -6,16 +6,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_release_identity_is_103_everywhere():
-    assert ET.parse(ROOT / "Module/BannerlordFG/SubModule.xml").getroot().find("Version").get("value") == "v1.1.0"
+    assert ET.parse(ROOT / "Module/BannerlordFG/SubModule.xml").getroot().find("Version").get("value") == "v1.1.1"
     for name in ("BannerlordFG", "BannerlordFG.Setup"):
         info = (ROOT / "src" / name / "Properties/AssemblyInfo.cs").read_text()
-        assert 'AssemblyVersion("1.1.0.0")' in info
-        assert 'AssemblyFileVersion("1.1.0.0")' in info
+        assert 'AssemblyVersion("1.1.1.0")' in info
+        assert 'AssemblyFileVersion("1.1.1.0")' in info
     cmd = (ROOT / "BUILD_WINDOWS.cmd").read_text()
-    assert 'BannerlordFG-v1.1.0.zip' in cmd
-    assert 'SUCCESS: BannerlordFG v1.1.0 compiled and installed.' in cmd
-    assert 'version-1.1.0-blue' in (ROOT / "README.md").read_text()
-    assert 'BannerlordFG-setup/1.1.0' in (ROOT / "src/BannerlordFG.Setup/OptiInstaller.cs").read_text()
+    assert 'BannerlordFG-v1.1.1.zip' in cmd
+    assert 'SUCCESS: BannerlordFG v1.1.1 compiled and installed.' in cmd
+    assert 'version-1.1.1-blue' in (ROOT / "README.md").read_text()
+    assert 'BannerlordFG-setup/1.1.1' in (ROOT / "src/BannerlordFG.Setup/OptiInstaller.cs").read_text()
 
 
 def test_windows_batch_remains_crlf():
