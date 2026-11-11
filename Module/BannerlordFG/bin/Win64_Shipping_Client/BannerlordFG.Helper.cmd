@@ -4,16 +4,17 @@ rem GPL-3.0-only. Background helper for the BannerlordFG maintenance DLL.
 rem CMD only launches Microsoft's .NET Framework host. It never downloads or
 rem executes scripts; archive download and SHA256 validation remain in C#.
 set "BFG_MAINTENANCE=%~dp0BannerlordFG.Maintenance.dll"
-set "BFG_LOGDIR=%LOCALAPPDATA%\BannerlordFG"
-if not exist "%BFG_LOGDIR%" mkdir "%BFG_LOGDIR%" 2>nul
-echo [%DATE% %TIME%] CMD helper invoked: %~1 >> "%BFG_LOGDIR%\maintenance-host.log"
-if not exist "%BFG_MAINTENANCE%" (
-  echo [ERROR] Maintenance DLL is missing: "%BFG_MAINTENANCE%" >> "%BFG_LOGDIR%\maintenance-host.log"
-  exit /b 2
-)
 set "BFG_OP=%~1"
 set "BFG_GAMEBIN="
 set "BFG_PID=0"
+set "BFG_STATE_BASE="
+set "BFG_LOGDIR=%LOCALAPPDATA%\BannerlordFG"
+set "BFG_LOGFILE=%BFG_LOGDIR%\maintenance-host.log"
+if not exist "%BFG_LOGDIR%" mkdir "%BFG_LOGDIR%" 2>nul
+rem Route early failures to the game user's state directory whenever the caller
+rem provided it. UAC may be running under a different administrator account.
+rem The first log entry here also covers malformed/unsupported operations.
+echo [%DATE% %TIME%] CMD helper invoked: %~1 >> "%BFG_LOGFILE%"
 if /I "%BFG_OP%"=="--verify-runtime" goto :invoke
 if /I "%BFG_OP%"=="--restore-legacy-fps" goto :invoke
 if /I "%BFG_OP%"=="--auto-first-run" goto :gamebin
@@ -21,8 +22,8 @@ if /I "%BFG_OP%"=="--post-exit-uninstall" goto :gamebin
 if /I "%BFG_OP%"=="--post-exit-restart" goto :gamebin
 if /I "%BFG_OP%"=="--uninstall-closed-game" goto :gamebin
 if /I "%BFG_OP%"=="--configure-live-controls-closed-game" goto :gamebin
-echo [ERROR] Unsupported maintenance operation. >> "%BFG_LOGDIR%\maintenance-host.log"
-exit /b 2
+set "BFG_FAILURE=Unsupported maintenance operation."
+goto :early_failure
 :gamebin
 if /I not "%~2"=="--gamebin" goto :arguments
 set "BFG_GAMEBIN=%~3"
@@ -45,8 +46,15 @@ rem First-relaunched games can hold the previous worker's redirected log
 rem handle. The uninstall worker must always have an independent log file.
 set "BFG_LOGFILE=%BFG_LOGDIR%\maintenance-host.log"
 if /I "%BFG_OP%"=="--post-exit-uninstall" set "BFG_LOGFILE=%BFG_LOGDIR%\maintenance-uninstall.log"
-echo [%DATE% %TIME%] CMD arguments validated, game pid=%BFG_PID%, operation=%BFG_OP% >> "%BFG_LOGFILE%"
+echo [%DATE% %TIME%] CMD helper invoked and arguments validated, game pid=%BFG_PID%, operation=%BFG_OP% >> "%BFG_LOGFILE%"
+rem This marker means CMD reached its argument validation stage, not that
+rem the .NET maintenance worker successfully started.
 if defined BFG_STATE_BASE echo [%DATE% %TIME%] helper started > "%BFG_STATE_BASE%.helper-started"
+rem A missing DLL used to terminate before writing a marker or .blocked file.
+if not exist "%BFG_MAINTENANCE%" (
+  set "BFG_FAILURE=BannerlordFG.Maintenance.dll is missing from the mod folder. Reinstall the complete mod package."
+  goto :early_failure
+)
 powershell.exe -NoLogo -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; try { [Console]::Out.WriteLine('PowerShell maintenance host started'); $folder=[IO.Path]::GetDirectoryName($env:BFG_MAINTENANCE); $known=@('System.Runtime.CompilerServices.Unsafe','System.Buffers','System.Memory','System.Numerics.Vectors','System.Threading.Tasks.Extensions','Microsoft.Bcl.AsyncInterfaces','System.Text.Encoding.CodePages','SharpCompress'); foreach($name in $known){ $path=[IO.Path]::Combine($folder,($name+'.dll')); if(-not [IO.File]::Exists($path)){throw ('Missing local runtime DLL: '+$path)}; $identity=[Reflection.AssemblyName]::GetAssemblyName($path); if($identity.Name -ne $name){throw ('Unexpected assembly name in '+$path)}; if($name -eq 'System.Threading.Tasks.Extensions' -and $identity.Version.ToString() -ne '4.2.0.1'){throw ('Expected System.Threading.Tasks.Extensions assembly 4.2.0.1; found '+$identity.FullName+'. Check NuGet restore/package pin.')} ; $asm=[Reflection.Assembly]::LoadFrom($path); if($asm.FullName -ne $identity.FullName){throw ('CLR loaded different local assembly: expected '+$identity.FullName+'; got '+$asm.FullName)}; if($env:BFG_OP -eq '--verify-runtime'){[Console]::Out.WriteLine('Runtime DLL identity OK: '+$asm.FullName)} }; [void][System.Reflection.Assembly]::LoadFrom($env:BFG_MAINTENANCE); [BannerlordFG.Setup.MaintenanceEntry]::RegisterLocalAssemblyBindings(); if($env:BFG_OP -eq '--verify-runtime'){ [void][BannerlordFG.Setup.MaintenanceEntry].GetMethods(); [BannerlordFG.Setup.MaintenanceEntry]::VerifyRuntimeAssemblies(); [BannerlordFG.Setup.MaintenanceEntry]::VerifyRuntimeExtraction(); [Console]::Out.WriteLine('Runtime LZMA2 7z extraction verified.'); [Console]::Out.WriteLine('Maintenance dependencies verified.'); exit 0 }; [Console]::Out.WriteLine('Maintenance DLL loaded'); $result=[BannerlordFG.Setup.MaintenanceEntry]::Run($env:BFG_OP,$env:BFG_GAMEBIN,[int]$env:BFG_PID); [Console]::Out.WriteLine('Maintenance exit code: '+$result); exit [int]$result } catch { [Console]::Error.WriteLine($_.Exception.ToString()); exit 2 }" >> "%BFG_LOGFILE%" 2>&1
 set "BFG_RC=%ERRORLEVEL%"
 if not "%BFG_RC%"=="0" (
@@ -58,5 +66,15 @@ if not "%BFG_RC%"=="0" (
 )
 exit /b %BFG_RC%
 :arguments
-echo [ERROR] Missing --gamebin or --wait-pid argument. >> "%BFG_LOGDIR%\maintenance-host.log"
+set "BFG_FAILURE=Maintenance CMD received invalid --gamebin or --wait-pid arguments."
+goto :early_failure
+:early_failure
+rem Failed preflight must signal the game, not leave a two-minute blind wait.
+rem For malformed arguments without --state-base, the game also detects the
+rem CMD process exit using its retained process handle.
+echo [%DATE% %TIME%] [ERROR] %BFG_FAILURE% >> "%BFG_LOGFILE%"
+if defined BFG_STATE_BASE (
+  > "%BFG_STATE_BASE%.blocked" echo %BFG_FAILURE% See maintenance-host.log.
+  if exist "%BFG_STATE_BASE%.pending" del /q "%BFG_STATE_BASE%.pending" 2>nul
+)
 exit /b 2

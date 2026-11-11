@@ -29,6 +29,9 @@ namespace BannerlordFG
         private string _gameBin;
         private string _helper;
         private int _pid;
+        // Keep the process handle until the first-run worker confirms startup
+        // or exits. A PID alone can be reused before the watchdog polls.
+        private Process _installCmdProcess;
         private bool _enteredGameplay;
         private bool _requestedExit;
         private bool _awaitingUninstallAck;
@@ -732,6 +735,10 @@ namespace BannerlordFG
                     return;
                 }
                 string blocked = State(".blocked");
+                // Detect a CMD that exits before its PowerShell worker produces
+                // a result. This is independent of UAC visibility and avoids the
+                // generic two-minute timeout for missing files or bad arguments.
+                CheckInstallCmdExit(ready, blocked);
                 string pending = State(".pending");
                 if ((_noticeVisible || _manualInstallRequested) && !File.Exists(blocked) &&
                     File.Exists(pending) && !File.Exists(ready) &&
@@ -765,6 +772,33 @@ namespace BannerlordFG
                     _monitorInstallAtStartup = false;
             }
             catch (Exception ex) { Log("Worker status: " + ex.Message); }
+        }
+
+        private void CheckInstallCmdExit(string ready, string blocked)
+        {
+            var process = _installCmdProcess;
+            if (process == null) return;
+            try
+            {
+                if (!process.HasExited) return;
+                int exitCode = process.ExitCode;
+                process.Dispose();
+                _installCmdProcess = null;
+                Log("OptiScaler maintenance cmd.exe exited with code " + exitCode + ".");
+                // CMD itself writes .blocked for known failures. Never overwrite
+                // a worker's more specific explanation, nor a verified result.
+                if (File.Exists(blocked) || File.Exists(ready) ||
+                    File.Exists(State(".disabled")) || _requestedExit) return;
+                string phase = File.Exists(State(".helper-started"))
+                    ? "Maintenance CMD started, but setup ended without confirmation."
+                    : "Maintenance CMD exited before confirming script startup.";
+                string reason = phase + " CMD exit code: " + exitCode +
+                    ". Check maintenance-host.log and runtime.log in %LOCALAPPDATA%\\BannerlordFG.";
+                File.WriteAllText(blocked, reason);
+                File.WriteAllText(State(".disabled"), "Maintenance CMD exited without a worker result.");
+                Log("Maintenance CMD early exit: " + reason);
+            }
+            catch (Exception ex) { Log("Cannot inspect maintenance CMD exit: " + ex.Message); }
         }
 
         private void CancelAutomaticSetup()
@@ -899,11 +933,24 @@ namespace BannerlordFG
             if (modifiesGraphicsFiles) psi.Verb = "runas";
             Log("Launching maintenance cmd.exe (operation=" + flags +
                 ", elevated=" + modifiesGraphicsFiles + ").");
-            using (var process = Process.Start(psi))
+            var process = Process.Start(psi);
+            if (process == null) return false;
+            try
             {
-                if (process == null) return false;
                 Log("Maintenance cmd.exe launched (PID=" + process.Id + ").");
+                if (flags == "--auto-first-run")
+                {
+                    // Retaining the handle permits a reliable HasExited/ExitCode
+                    // check without polling an unrelated process with a reused PID.
+                    if (_installCmdProcess != null) _installCmdProcess.Dispose();
+                    _installCmdProcess = process;
+                    process = null;
+                }
                 return true;
+            }
+            finally
+            {
+                if (process != null) process.Dispose();
             }
         }
 
@@ -971,7 +1018,7 @@ namespace BannerlordFG
                 File.WriteAllText(State(".pending"), DateTime.UtcNow.ToString("o"));
                 if (explicitlyRequested)
                     InformationManager.DisplayMessage(new InformationMessage(
-                        "BannerlordFG: approve the Windows administrator prompt to install OptiScaler."));
+                        "BannerlordFG: approve the Windows administrator prompt if one appears."));
                 if (!StartWorker("--auto-first-run")) throw new IOException("Could not start helper.");
                 _manualInstallRequested = true;
                 ShowSetupNotice();

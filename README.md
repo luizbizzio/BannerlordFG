@@ -47,7 +47,11 @@ Once initialized, the Frame Generation and FPS counter switches can work without
 
 If ReShade does not work alongside BannerlordFG, close the game and rename **ReShade's `dxgi.dll` to `d3d11.dll`** in `Mount & Blade II Bannerlord/bin/Win64_Shipping_Client/`.
 
-Only rename `dxgi.dll` if it belongs to ReShade and `d3d11.dll` does not already exist. Leave BannerlordFG's `winmm.dll` unchanged. This workaround has been tested with BannerlordFG and ReShade.
+Only rename `dxgi.dll` if it belongs to ReShade and `d3d11.dll` does not already exist. Leave BannerlordFG's `winmm.dll` unchanged. Do not overwrite any DLL.
+
+After OptiScaler is installed, you can set `LoadReshade=false` under `[Plugins]` in `OptiScaler.ini`. To use F9 for the ReShade menu, set `KeyOverlay=120,0,0,0` in `ReShade.ini`. These are manual changes, not part of the automatic installation.
+
+This is a tested workaround, not a guarantee. It does **not** guarantee compatibility with every combination of graphics injectors, drivers, and game mods. BannerlordFG does not perform this workaround automatically.
 
 ## ⚙️ How it works
 
@@ -158,6 +162,7 @@ BannerlordFG keeps a manifest of the OptiScaler files it installs and checks the
 | FG / FPS toggle has no visible effect | Restart Bannerlord to apply the saved state. Runtime requests have no independent readback. |
 | Unexpected OptiScaler splash | Check for a previous OptiScaler installation; do not remove unknown graphics files blindly. |
 | Download seems stuck | The installer shows real progress in 10% steps when file size is known, then separate SHA-256 verification and extraction stages. If it stops for too long, check `first-run.log` and `maintenance-host.log` in `%LOCALAPPDATA%\BannerlordFG`. |
+| CMD helper exits before startup | The game reports the CMD exit code instead of waiting two minutes when the process is detectable. Check `runtime.log` and `maintenance-host.log` in `%LOCALAPPDATA%\BannerlordFG`; missing maintenance DLLs and other early failures may also appear in the error popup. |
 | Game did not reopen after installation | Check `first-run.log` in `%LOCALAPPDATA%\BannerlordFG`. The helper does not open a duplicate game if Bannerlord is already running. If it says a relaunch was unsafe or failed, start the game normally through Steam after installation is finished. |
 | ReShade menu stops opening | See [ReShade compatibility](#reshade-compatibility) and verify that ReShade is the actual owner of the DLL before renaming. |
 
