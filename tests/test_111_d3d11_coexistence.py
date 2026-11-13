@@ -1,4 +1,4 @@
-"""Contract checks for generic, non-owning d3d11.dll coexistence in v1.1.1.
+"""Contract checks for generic, non-owning d3d11.dll coexistence in v1.1.2.
 
 Static checks only: validate Windows compilation and behavior inside Bannerlord.
 """

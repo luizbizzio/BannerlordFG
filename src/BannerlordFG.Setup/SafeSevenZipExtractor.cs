@@ -77,6 +77,9 @@ namespace BannerlordFG.Setup
                 if (entries.Length == 0 || entries.Length > MaxEntries)
                     throw new InvalidDataException("Unexpected number of entries in official 7z archive.");
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                // The sequential reader can enumerate directories before files.
+                // Map every reader entry back to a fully validated archive entry.
+                var entryIndexes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 long expectedTotal = 0;
                 var paths = new List<string>(entries.Length);
                 foreach (var entry in entries)
@@ -88,6 +91,7 @@ namespace BannerlordFG.Setup
                     CheckPath(root, fullPath);
                     if (!seen.Add(relative.TrimEnd(Path.DirectorySeparatorChar)))
                         throw new InvalidDataException("Official archive contains duplicate entry names.");
+                    entryIndexes.Add(relative.TrimEnd(Path.DirectorySeparatorChar), paths.Count);
                     if (entry.Size < 0 || entry.Size > MaxUnpackedBytes - expectedTotal)
                         throw new InvalidDataException("Official archive exceeds the unpacked size limit.");
                     expectedTotal += entry.Size;
@@ -109,39 +113,55 @@ namespace BannerlordFG.Setup
                     }
                 }
 
+                // The official 7z may be SOLID: opening entry streams directly
+                // repeatedly can re-decompress earlier data for every file.
+                // ExtractAllEntries reuses the decoder while reading sequentially.
                 long actualTotal = 0;
                 byte[] buffer = new byte[BufferSize];
-                for (int i = 0; i < entries.Length; ++i)
+                var extracted = new HashSet<int>();
+                using (var reader = archive.ExtractAllEntries())
                 {
-                    var entry = entries[i];
-                    string target = paths[i];
-                    CheckPath(root, target);
-                    if (entry.IsDirectory)
+                    while (reader.MoveToNextEntry())
                     {
-                        Directory.CreateDirectory(target);
-                        continue;
-                    }
-                    string folder = Path.GetDirectoryName(target);
-                    Directory.CreateDirectory(folder);
-                    CheckPath(root, target);
-                    using (var source = entry.OpenEntryStream())
-                    using (var destination = new FileStream(target, FileMode.CreateNew,
-                        FileAccess.Write, FileShare.None, BufferSize))
-                    {
-                        int count;
-                        long entryBytes = 0;
-                        while ((count = source.Read(buffer, 0, buffer.Length)) != 0)
+                        string relative = ValidateEntryName(reader.Entry.Key);
+                        int i;
+                        if (!entryIndexes.TryGetValue(relative.TrimEnd(Path.DirectorySeparatorChar), out i) ||
+                            !extracted.Add(i))
+                            throw new InvalidDataException("Unexpected or duplicate sequential archive entry.");
+                        var entry = entries[i];
+                        if (entry.IsDirectory != reader.Entry.IsDirectory || entry.Size != reader.Entry.Size)
+                            throw new InvalidDataException("Sequential archive metadata does not match validated entries.");
+                        string target = paths[i];
+                        CheckPath(root, target);
+                        if (entry.IsDirectory)
                         {
-                            entryBytes += count;
-                            actualTotal += count;
-                            if (entryBytes > entry.Size || actualTotal > MaxUnpackedBytes)
-                                throw new InvalidDataException("Archive extraction exceeded its size bounds.");
-                            destination.Write(buffer, 0, count);
+                            Directory.CreateDirectory(target);
+                            continue;
                         }
-                        if (entryBytes != entry.Size)
-                            throw new InvalidDataException("Archive entry size does not match metadata.");
+                        string folder = Path.GetDirectoryName(target);
+                        Directory.CreateDirectory(folder);
+                        CheckPath(root, target);
+                        using (var source = reader.OpenEntryStream())
+                        using (var destination = new FileStream(target, FileMode.CreateNew,
+                            FileAccess.Write, FileShare.None, BufferSize))
+                        {
+                            int count;
+                            long entryBytes = 0;
+                            while ((count = source.Read(buffer, 0, buffer.Length)) != 0)
+                            {
+                                entryBytes += count;
+                                actualTotal += count;
+                                if (entryBytes > entry.Size || actualTotal > MaxUnpackedBytes)
+                                    throw new InvalidDataException("Archive extraction exceeded its size bounds.");
+                                destination.Write(buffer, 0, count);
+                            }
+                            if (entryBytes != entry.Size)
+                                throw new InvalidDataException("Archive entry size does not match metadata.");
+                        }
                     }
                 }
+                if (extracted.Count != entries.Length || actualTotal != expectedTotal)
+                    throw new InvalidDataException("Sequential extraction did not match the validated archive.");
             }
         }
     }

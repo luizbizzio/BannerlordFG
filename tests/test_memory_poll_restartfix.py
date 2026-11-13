@@ -1,4 +1,4 @@
-"""Structural regression checks for 1.1.1 memory, I/O and first-relaunch fix.
+"""Structural regression checks for 1.1.2 memory, I/O and first-relaunch fix.
 
 These are source-level tests; a Windows MSBuild and live Bannerlord smoke test
 remain required before releasing a compiled mod.
@@ -57,15 +57,14 @@ def test_poll_is_disarmed_on_success_failure_and_user_cancel():
     assert "Player cancelled first-run setup" in check
 
 
-def test_worker_cleans_up_before_relaunch():
+def test_worker_cleans_up_before_manual_relaunch():
     install = AUTO.split("internal static void Run(string requestedGameBin, int waitPid)", 1)[1]
     assert "bool installCompleted = false;" in install
     assert "installCompleted = true;" in install
-    assert install.index("if (pending != null) try { File.Delete(pending); }") < install.index("RelaunchDirect(gameBin, waitPid);")
-    assert install.index("mutex.ReleaseMutex()") < install.index("RelaunchDirect(gameBin, waitPid);")
-    assert install.index("if (package != null) package.Dispose();") < install.index("RelaunchDirect(gameBin, waitPid);")
-    assert install.count("RelaunchDirect(gameBin, waitPid);") == 1
-    assert "if (gameBin != null && !installCompleted)" in install
+    assert install.index("if (pending != null) try { File.Delete(pending); }") < install.index("OptiScaler installation complete")
+    assert install.index("mutex.ReleaseMutex()") < install.index("OptiScaler installation complete")
+    assert install.index("if (package != null) package.Dispose();") < install.index("OptiScaler installation complete")
+    assert "RelaunchDirect(" not in install
     assert "if (markersCleared)" in install
 
 
@@ -78,7 +77,7 @@ def test_first_relaunch_uninstall_ignores_only_completed_stale_pending_marker():
 
 
 def test_pinned_release_and_native_limit_remain_unchanged():
-    assert "nightly-20261109" in (ROOT / "src/BannerlordFG.Setup/OptiInstaller.cs").read_text()
-    assert "v1.1.1" in (ROOT / "Module/BannerlordFG/SubModule.xml").read_text()
+    assert "nightly-20261112" in (ROOT / "src/BannerlordFG.Setup/OptiInstaller.cs").read_text()
+    assert "v1.1.2" in (ROOT / "Module/BannerlordFG/SubModule.xml").read_text()
     assert "if (_guardFailed" in MOD
     assert "_controller.MaintainVanillaSettings();" in MOD

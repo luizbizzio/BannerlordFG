@@ -21,4 +21,4 @@ if (Get-Process -Name Bannerlord,Bannerlord.Native,TaleWorlds.MountAndBlade.Laun
 if ($LASTEXITCODE -ne 0) {
     throw "BannerlordFG recovery failed (exit code $LASTEXITCODE). Check the logs in $env:LOCALAPPDATA\BannerlordFG. Do not delete the module or backup files."
 }
-Write-Host "Recovery completed. Check $env:LOCALAPPDATA\BannerlordFG\first-run.log for details." -ForegroundColor Green
+Write-Host "Recovery completed. Check $env:LOCALAPPDATA\BannerlordFG\BannerlordFG.log for details." -ForegroundColor Green

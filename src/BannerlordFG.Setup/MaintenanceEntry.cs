@@ -183,8 +183,8 @@ namespace BannerlordFG.Setup
                     case "--post-exit-uninstall":
                         AutoFirstRun.RunUninstall(gameBin, waitPid);
                         return 0;
-                    case "--post-exit-restart":
-                        AutoFirstRun.RunRestartOnly(gameBin, waitPid);
+                    case "--post-exit-settings":
+                        AutoFirstRun.RunSettingsAfterExit(gameBin, waitPid);
                         return 0;
                     case "--uninstall-closed-game":
                         AutoFirstRun.RunManualUninstall(gameBin);

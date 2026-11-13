@@ -10,7 +10,7 @@ set "SOURCE=%ROOT%Module\BannerlordFG"
 set "OUT=%SOURCE%\bin\Win64_Shipping_Client"
 set "TARGET=%MODULES%\BannerlordFG"
 set "HARMONY=%ROOT%deps\Harmony\0Harmony.dll"
-set "ARCHIVE=%ROOT%BannerlordFG-v1.1.1.zip"
+set "ARCHIVE=%ROOT%BannerlordFG-v1.1.2.zip"
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 set "TMPBUILD=%TEMP%\BannerlordFG-build-%RANDOM%-%RANDOM%"
 set "OLD_ROTATED="
@@ -121,7 +121,7 @@ rem same Windows managed runtime host the installed mod runs. File presence alon
 echo [RUNTIME PREFLIGHT] Checking managed dependency loading...
 call "%OUT%\BannerlordFG.Helper.cmd" --verify-runtime
 if errorlevel 1 (
-  set "ERROR_MSG=Maintenance runtime preflight failed. Inspect maintenance-host.log before deploying"
+  set "ERROR_MSG=Maintenance runtime preflight failed. Inspect BannerlordFG.log before deploying"
   goto :fail
 )
 if exist "%OUT%\BUILD_REQUIRED.txt" del /Q "%OUT%\BUILD_REQUIRED.txt"
@@ -247,17 +247,17 @@ if exist "%LOCALAPPDATA%\BannerlordFG\native-ui-off.flag" del /Q "%LOCALAPPDATA%
 if defined IN_PLACE echo [INFO] Updated the existing directory in place; no rename was required.
 echo [POST-DEPLOY] Configuring two internal FG/FPS runtime keys; disabling user shortcuts...
 call "%TARGET%\bin\Win64_Shipping_Client\BannerlordFG.Helper.cmd" --configure-live-controls-closed-game --gamebin "%GAMEBIN%"
-if errorlevel 1 echo [WARNING] Existing OptiScaler hotkeys could not be migrated. Check first-run.log and the INI before launching.
+if errorlevel 1 echo [WARNING] Existing OptiScaler hotkeys could not be migrated. Check BannerlordFG.log and the INI before launching.
 if /I not "%~1"=="--deploy-only" (
   echo [POST-DEPLOY] Restoring any previously mod-owned native FPS counter setting...
   call "%TARGET%\bin\Win64_Shipping_Client\BannerlordFG.Helper.cmd" --restore-legacy-fps
-  if errorlevel 1 echo [WARNING] Legacy FPS migration could not run. Check first-run.log.
+  if errorlevel 1 echo [WARNING] Legacy FPS migration could not run. Check BannerlordFG.log.
 )
 echo.
 if /I "%~1"=="--deploy-only" (
   echo SUCCESS: Previously compiled BannerlordFG archive installed.
 ) else (
-  echo SUCCESS: BannerlordFG v1.1.1 compiled and installed.
+  echo SUCCESS: BannerlordFG v1.1.2 compiled and installed.
 )
 echo Installed: "%TARGET%"
 echo standalone ZIP: "%ARCHIVE%"
@@ -409,7 +409,7 @@ exit /b 0
 
 :deploy_existing_archive
 if "%~2"=="" (
-  set "ERROR_MSG=Missing ZIP path. Usage: BUILD_WINDOWS.cmd --deploy-only ""C:\path\BannerlordFG-v1.1.1.zip"""
+  set "ERROR_MSG=Missing ZIP path. Usage: BUILD_WINDOWS.cmd --deploy-only ""C:\path\BannerlordFG-v1.1.2.zip"""
   goto :fail
 )
 set "ARCHIVE=%~2"

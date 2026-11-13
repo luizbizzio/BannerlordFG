@@ -1,4 +1,4 @@
-"""Source-contract regressions for the v1.1.1 initial-install relaunch race.
+"""Source-contract regressions for the v1.1.2 initial-install relaunch race.
 
 These tests cannot emulate Windows Steam process lifetime or build a DLL.
 """
@@ -37,19 +37,14 @@ def test_prepared_files_are_hash_checked_before_install():
     assert "Extracted OptiScaler package escaped its temporary directory" in prepared
 
 
-def test_relaunch_does_not_confuse_stale_launcher_with_game_host():
-    check = AUTO.split("private static bool GameHostActiveForRelaunch", 1)[1].split("private static void RelaunchDirect", 1)[0]
-    assert 'name.Equals("Bannerlord",' in check
-    assert 'name.Equals("TaleWorlds.MountAndBlade.Launcher",' in check
-    assert 'moduleName.Equals("TaleWorlds.Engine.dll"' in check
-    assert "string ownedProxy = OptiInstaller.GetManagedProxyName(gameBin);" in check
-    assert "catch (Exception ex)" in check and "return true;" in check
-    relaunch = AUTO.split("private static void RelaunchDirect", 1)[1].split("internal static void RunRestartOnly", 1)[0]
-    assert "File.Delete(marker); // one-shot authorization" in relaunch
-    assert "GameHostActiveForRelaunch(gameBin)" in relaunch
-    assert "Avoiding a duplicate game instance." in relaunch
-    assert relaunch.index("GameHostActiveForRelaunch(gameBin)") < relaunch.index("Process.Start(startInfo)")
-    assert "UseShellExecute = true" in relaunch
+def test_background_install_never_launches_game():
+    assert 'RelaunchDirect' not in AUTO
+    assert 'Process.Start(' not in AUTO
+    assert 'RunRestartOnly' not in AUTO
+    assert 'RunSettingsAfterExit(' in AUTO
+    assert 'TaleWorlds.Engine.Utilities.QuitGame();' in SUB
+    assert '"--post-exit-settings"' in SUB
+    assert '"--post-exit-install-restart"' not in SUB
 
 
 def test_no_change_to_reshade_winmm_policy_or_download_percent():

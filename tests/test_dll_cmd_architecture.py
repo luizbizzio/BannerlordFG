@@ -24,7 +24,7 @@ def test_cmd_uses_windows_host_with_no_policy_bypass_or_remote_script():
     assert 'Invoke-Expression' not in CMD and 'DownloadString' not in CMD
     assert '[System.Reflection.Assembly]::LoadFrom($env:BFG_MAINTENANCE)' in CMD
     assert '$env:BFG_GAMEBIN' in CMD and '$env:BFG_OP' in CMD
-    assert 'maintenance-host.log' in CMD
+    assert 'BannerlordFG.log' in CMD
 
 def test_in_game_worker_launches_cmd_with_uac_for_graphics_changes():
     assert '_helper = Path.Combine(' in SUB
@@ -48,8 +48,8 @@ def test_package_requires_cmd_and_dll_without_shipping_setup_exe():
     assert 'BannerlordFG.Helper.cmd' in BUILD
     assert 'BannerlordFG.Setup.exe' not in (MOD/'bin/Win64_Shipping_Client').as_posix() # template has none
     assert list(MOD.rglob('*.exe')) == []
-    assert 'BannerlordFG-v1.1.1.zip' in BUILD
-    assert ET.parse(MOD/'SubModule.xml').getroot().find('Version').get('value') == 'v1.1.1'
+    assert 'BannerlordFG-v1.1.2.zip' in BUILD
+    assert ET.parse(MOD/'SubModule.xml').getroot().find('Version').get('value') == 'v1.1.2'
 
 def test_launcher_does_not_block_graphics_maintenance():
     root = Path(__file__).resolve().parents[1]

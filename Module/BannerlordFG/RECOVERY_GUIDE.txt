@@ -1,7 +1,7 @@
-BannerlordFG v1.1.1 - Recovery guide
+BannerlordFG v1.1.2 - Recovery guide
 ====================================
 
-AUTOMATIC RECOVERY (CURRENT PIN: nightly-20261109)
+AUTOMATIC RECOVERY (CURRENT PIN: nightly-20261112)
 When you click Install, an INCOMPLETE installation from a recognized
 BannerlordFG OptiScaler release (20260926, 20261016 or 20261106) can be recovered
 automatically after Bannerlord closes. The helper verifies the old manifest,
@@ -40,7 +40,7 @@ approving. Do not run Bannerlord during recovery.
 STEP 4 - CHECK THE RESULT
 If the script reports success, check the log at:
 
-  %LOCALAPPDATA%\BannerlordFG\first-run.log
+  %LOCALAPPDATA%\BannerlordFG\BannerlordFG.log
 
 If it reports an error, DO NOT delete the module, manifests, backups,
 or remaining graphics files. Keep the logs and the original files to
@@ -48,7 +48,7 @@ investigate the error before you try again.
 
 For more information, also check:
 
-  %LOCALAPPDATA%\BannerlordFG\maintenance-host.log
+  %LOCALAPPDATA%\BannerlordFG\BannerlordFG.log
 
 COMMON ISSUES
 - A game process is still open: fully exit the game and try again.

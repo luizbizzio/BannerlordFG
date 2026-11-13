@@ -7,18 +7,14 @@ A=(R/'src/BannerlordFG.Setup/AutoFirstRun.cs').read_text()
 N=(R/'src/BannerlordFG/Core/NativePerformancePatch.cs').read_text()
 
 class RestartCrashRegressions(unittest.TestCase):
-    def test_launcher_named_host_reuses_explicit_module_argument(self):
-        for needle in ['TaleWorlds.MountAndBlade.Launcher.exe','Environment.GetCommandLineArgs()',
-                       'explicitModules.Length == 1','"_MODULES_*" + string.Join("*", moduleIds)',
-                       'ReadActiveModuleIds()', 'GetModulesNames', 'GetActiveModules',
-                       'ReadSelectedLauncherModules()', 'LauncherData.xml',
-                       'Bannerlord.exe', 'refusing direct restart without the player']:
-            self.assertIn(needle,S)
-        self.assertIn('Path.GetFullPath(lines[0])',A)
-        self.assertIn('FileName = exe',A)
-        self.assertIn('_lateCaptureRetries < 4',S)
-        self.assertIn('CaptureCurrentLaunch();',S)
-        self.assertNotIn('steam://rungameid',A)
+    def test_game_does_not_launch_an_exe_after_install(self):
+        self.assertIn('private void CloseAfterVerifiedDownload()', S)
+        self.assertIn('TaleWorlds.Engine.Utilities.QuitGame()', S)
+        self.assertNotIn('RelaunchDirect', A)
+        self.assertNotIn('Process.Start(', A)
+        self.assertNotIn('RunRestartOnly', A)
+        self.assertNotIn('"--post-exit-install-restart"', S)
+
     def test_provider_placeholder_carries_no_custom_data(self):
         self.assertIn('new OptionGroup(title, Enumerable.Empty<IOptionData>())',N)
         self.assertIn('GroupConstructedPostfix',N)

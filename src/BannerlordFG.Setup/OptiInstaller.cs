@@ -18,16 +18,18 @@ namespace BannerlordFG.Setup
     /// <summary>Pinned OptiScaler downloader. OptiScaler is not bundled; extraction uses SharpCompress.</summary>
     internal static class OptiInstaller
     {
-        internal const string Tag = "nightly-20261109";
-        internal const string AssetName = "OptiScaler_v10.0.0-pre1_20261109.7z";
-        // Official GitHub release asset SHA-256, published 2026-11-09.
-        internal const string PinnedSha256 = "e65cfc7092840cde79b24467bf0b3404bc358e56866478f46811eed06ffaa150";
-        // Legacy releases are recognized ONLY for safe, hash-verified recovery/uninstall.
-        // They are not downloaded or installed by this build.
-        // Prior v1.1.1 builds were pinned to 20261106. Keep that exact
-        // release/digest pair recognized for safe recovery (never download it).
-        private const string PriorTag = "nightly-20261106";
-        private const string PriorPinnedSha256 = "5b92e637cdead99c8d994360850407e93876f00b5f0776f2be39a1ee2caa5726";
+        internal const string Tag = "nightly-20261112";
+        internal const string AssetName = "OptiScaler_v10.0.0-pre1_20261112.7z";
+        // SHA-256 published by GitHub for the official 2026-11-12 release asset.
+        // Keep this pin immutable; do not silently use newer nightlies.
+        internal const string PinnedSha256 = "c32932ca340ffd605325101077b072209514ed0f110dc8b7ab92486eec1a5d93";
+        // Historical release/digest pairs are accepted ONLY for hash-verified
+        // recovery and uninstall. They are never downloaded by this version.
+        // v1.1.1's 20261109 installations must remain uninstallable after upgrade.
+        private const string PriorTag = "nightly-20261109";
+        private const string PriorPinnedSha256 = "e65cfc7092840cde79b24467bf0b3404bc358e56866478f46811eed06ffaa150";
+        private const string OlderTag = "nightly-20261106";
+        private const string OlderPinnedSha256 = "5b92e637cdead99c8d994360850407e93876f00b5f0776f2be39a1ee2caa5726";
         private const string PreviousTag = "nightly-20261016";
         private const string PreviousPinnedSha256 = "09149a5b17514a0594faf612467267c62ed8851dbc1dde0ade6763f1152e600f";
         private const string LegacyTag = "nightly-20260926";
@@ -38,6 +40,8 @@ namespace BannerlordFG.Setup
                     string.Equals(digest, PinnedSha256, StringComparison.OrdinalIgnoreCase)) ||
                    (string.Equals(tag, PriorTag, StringComparison.Ordinal) &&
                     string.Equals(digest, PriorPinnedSha256, StringComparison.OrdinalIgnoreCase)) ||
+                   (string.Equals(tag, OlderTag, StringComparison.Ordinal) &&
+                    string.Equals(digest, OlderPinnedSha256, StringComparison.OrdinalIgnoreCase)) ||
                    (string.Equals(tag, PreviousTag, StringComparison.Ordinal) &&
                     string.Equals(digest, PreviousPinnedSha256, StringComparison.OrdinalIgnoreCase)) ||
                    (string.Equals(tag, LegacyTag, StringComparison.Ordinal) &&
@@ -300,7 +304,7 @@ namespace BannerlordFG.Setup
                 if (progress != null) progress("connecting", -1, 0, 0);
                 using (var client = new WebClient())
                 {
-                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.1.1";
+                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.1.2";
                     client.Headers[HttpRequestHeader.Accept] = "application/vnd.github+json";
                     json = await WithDownloadDeadline(client.DownloadStringTaskAsync(Api), client,
                         TimeSpan.FromSeconds(35), "GitHub release metadata");
@@ -318,7 +322,7 @@ namespace BannerlordFG.Setup
                 if (progress != null) progress("downloading", 0, 0, 0);
                 using (var client = new WebClient())
                 {
-                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.1.1";
+                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.1.2";
                     int nextLogPercent = 25;
                     int lastReportedBucket = -1;
                     client.DownloadProgressChanged += (sender, args) => {
@@ -373,7 +377,10 @@ namespace BannerlordFG.Setup
                 log("Extracting verified OptiScaler archive in temporary storage before game shutdown...");
                 string unpacked = Path.Combine(pkg.Folder, "unpacked");
                 Directory.CreateDirectory(unpacked);
+                var extractionTimer = Stopwatch.StartNew();
                 await Task.Run(() => ExtractSafe(pkg.Archive, unpacked));
+                log("Sequential 7z extraction finished in " + extractionTimer.ElapsedMilliseconds + " ms.");
+                var validationTimer = Stopwatch.StartNew();
                 pkg.ExtractedRoot = FindPackageRoot(unpacked);
                 var extractedFiles = Directory.GetFiles(pkg.ExtractedRoot, "*", SearchOption.AllDirectories);
                 if (extractedFiles.Length == 0) throw new InvalidDataException("Official package is empty.");
@@ -386,6 +393,7 @@ namespace BannerlordFG.Setup
                     pkg.ExtractedHashes.Add(relative, HashFile(file));
                 }
                 pkg.Verify();
+                log("Extracted file hashing and verification finished in " + validationTimer.ElapsedMilliseconds + " ms.");
                 log("OptiScaler archive and extracted files verified. Game files remain untouched until shutdown.");
                 if (progress != null)
                     progress("verified", 100, new FileInfo(pkg.Archive).Length, 0);

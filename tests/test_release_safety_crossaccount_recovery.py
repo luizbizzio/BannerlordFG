@@ -29,11 +29,12 @@ def test_elevated_worker_uses_caller_user_state_and_documents():
     assert 'BFG_VERIFIED_STATE_DIR' in auto
 
 
-def test_no_cross_account_elevated_relaunch():
-    assert 'File.GetAccessControl(launch)' in auto
-    assert 'WindowsIdentity.GetCurrent().User.Value' in auto
-    assert 'Cross-account UAC detected' in auto
-    assert auto.index('Cross-account UAC detected') < auto.index('using (var p = Process.Start(startInfo))')
+def test_no_elevated_game_relaunch_regardless_of_uac_account():
+    assert 'RelaunchDirect' not in auto
+    assert 'Process.Start(' not in auto
+    assert 'RunSettingsAfterExit' in auto
+    assert 'AutoFirstRun.RunSettingsAfterExit(gameBin, waitPid)' in entry
+    assert '--post-exit-install-restart' not in helper
 
 
 def test_recovery_only_after_download_and_game_exit():

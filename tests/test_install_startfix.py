@@ -25,7 +25,7 @@ def test_cmd_helper_reports_early_failure_and_host_entry():
     assert 'helper started > "%BFG_STATE_BASE%.helper-started"' in HELPER
     assert "PowerShell maintenance host started" in HELPER
     assert "Maintenance DLL loaded" in HELPER
-    assert 'maintenance-host.log' in HELPER
+    assert 'BannerlordFG.log' in HELPER
     assert '%BFG_STATE_BASE%.blocked' in HELPER
 
 

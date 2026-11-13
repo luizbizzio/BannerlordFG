@@ -121,7 +121,7 @@ namespace BannerlordFG.Core
             {
                 TaleWorlds.Library.InformationManager.DisplayMessage(
                     new TaleWorlds.Library.InformationMessage(
-                        "BannerlordFG: cannot change FG. See runtime.log."));
+                        "BannerlordFG: cannot change FG. See BannerlordFG.log."));
             }
             else
             {
@@ -154,7 +154,7 @@ namespace BannerlordFG.Core
                 (Controller.OverlayAssumedEnabled && !desired))
                 TaleWorlds.Library.InformationManager.DisplayMessage(
                     new TaleWorlds.Library.InformationMessage(
-                        "BannerlordFG: FPS change not applied live; see runtime.log."));
+                        "BannerlordFG: FPS change not applied live; see BannerlordFG.log."));
             NativePerformancePatch.ScheduleSelectionRefresh();
         }
         public override ValueTuple<string, bool> GetIsDisabledAndReasonID() =>

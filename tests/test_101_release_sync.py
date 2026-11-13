@@ -5,14 +5,14 @@ ROOT=Path(__file__).resolve().parents[1]
 
 def test_101_package_version():
     xml=ET.parse(ROOT/'Module/BannerlordFG/SubModule.xml').getroot()
-    assert xml.find('Version').get('value')=='v1.1.1'
-    assert 'BannerlordFG-v1.1.1.zip' in (ROOT/'BUILD_WINDOWS.cmd').read_text()
+    assert xml.find('Version').get('value')=='v1.1.2'
+    assert 'BannerlordFG-v1.1.2.zip' in (ROOT/'BUILD_WINDOWS.cmd').read_text()
 
 def test_101_pinned_optiscaler():
     code=(ROOT/'src/BannerlordFG.Setup/OptiInstaller.cs').read_text()
-    for expected in ('nightly-20261109',
-                     'OptiScaler_v10.0.0-pre1_20261109.7z',
-                     'e65cfc7092840cde79b24467bf0b3404bc358e56866478f46811eed06ffaa150'):
+    for expected in ('nightly-20261112',
+                     'OptiScaler_v10.0.0-pre1_20261112.7z',
+                     'c32932ca340ffd605325101077b072209514ed0f110dc8b7ab92486eec1a5d93'):
         assert expected in code
 
 def test_101_recovery_message():
@@ -24,12 +24,12 @@ def test_101_recovery_message():
 
 def test_101_runtime_message():
     code=(ROOT/'src/BannerlordFG/Core/NativePerformancePatch.cs').read_text()
-    assert 'Harmony native Performance v1.1.1 installed' in code
+    assert 'Harmony native Performance v1.1.2 installed' in code
 
 def test_101_assembly_metadata():
     for project in ('BannerlordFG','BannerlordFG.Setup'):
         subdir=ROOT/'src'/project
         content=(subdir/'Properties/AssemblyInfo.cs').read_text()
-        for attr in ('AssemblyVersion("1.1.1.0")','AssemblyFileVersion("1.1.1.0")'):
+        for attr in ('AssemblyVersion("1.1.2.0")','AssemblyFileVersion("1.1.2.0")'):
             assert attr in content
         assert 'Properties\\AssemblyInfo.cs' in (subdir/(project+'.csproj')).read_text()

@@ -16,10 +16,12 @@ def section(start, end):
 
 def test_known_archive_pairs_are_pinned_to_actual_published_builds():
     constants = dict(re.findall(r'(?:internal|private) const string (\w+) = "([^"]+)";', SETUP))
-    assert constants['Tag'] == 'nightly-20261109'
-    assert constants['PinnedSha256'] == 'e65cfc7092840cde79b24467bf0b3404bc358e56866478f46811eed06ffaa150'
-    assert constants['PriorTag'] == 'nightly-20261106'
-    assert constants['PriorPinnedSha256'] == '5b92e637cdead99c8d994360850407e93876f00b5f0776f2be39a1ee2caa5726'
+    assert constants['Tag'] == 'nightly-20261112'
+    assert constants['PinnedSha256'] == 'c32932ca340ffd605325101077b072209514ed0f110dc8b7ab92486eec1a5d93'
+    assert constants['PriorTag'] == 'nightly-20261109'
+    assert constants['PriorPinnedSha256'] == 'e65cfc7092840cde79b24467bf0b3404bc358e56866478f46811eed06ffaa150'
+    assert constants['OlderTag'] == 'nightly-20261106'
+    assert constants['OlderPinnedSha256'] == '5b92e637cdead99c8d994360850407e93876f00b5f0776f2be39a1ee2caa5726'
     assert constants['PreviousTag'] == 'nightly-20261016'
     assert constants['PreviousPinnedSha256'] == '09149a5b17514a0594faf612467267c62ed8851dbc1dde0ade6763f1152e600f'
     assert constants['LegacyTag'] == 'nightly-20260926'
@@ -29,6 +31,8 @@ def test_known_archive_pairs_are_pinned_to_actual_published_builds():
     assert 'string.Equals(digest, PinnedSha256, StringComparison.OrdinalIgnoreCase)' in matcher
     assert 'string.Equals(tag, PriorTag, StringComparison.Ordinal)' in matcher
     assert 'string.Equals(digest, PriorPinnedSha256, StringComparison.OrdinalIgnoreCase)' in matcher
+    assert 'string.Equals(tag, OlderTag, StringComparison.Ordinal)' in matcher
+    assert 'string.Equals(digest, OlderPinnedSha256, StringComparison.OrdinalIgnoreCase)' in matcher
     assert 'string.Equals(tag, PreviousTag, StringComparison.Ordinal)' in matcher
     assert 'string.Equals(digest, PreviousPinnedSha256, StringComparison.OrdinalIgnoreCase)' in matcher
     assert '||' in matcher

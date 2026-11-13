@@ -1,4 +1,4 @@
-BannerlordFG v1.1.1 - Player instructions
+BannerlordFG v1.1.2 - Player instructions
 =======================================
 
 INSTALL
@@ -8,10 +8,10 @@ INSTALL
 4. Select OptiScaler > Install, confirm, and follow the on-screen prompts.
    The installer shows download progress, verification and extraction stages.
    BannerlordFG prepares the verified files before it closes the game.
-   Once ready, it closes the game, copies the files, and attempts to reopen
-   Bannerlord automatically. Do not manually reopen it while setup finishes.
-   If the log reports that relaunch was unsafe or failed, reopen the game
-   through your normal launcher once installation is complete.
+   Once ready, it closes the game and finishes copying the files.
+   It does not restart Bannerlord automatically. Wait for installation to
+   finish, then open the game yourself through your normal launcher.
+   Diagnostics are in %LOCALAPPDATA%\BannerlordFG\BannerlordFG.log.
 
 USE
 A compatible GPU supporting FSR or DLSS is required. A supported upscaling
@@ -39,7 +39,7 @@ NOTES
 - On AMD or Intel GPUs, use DLSS Quality as Bannerlord's input option
   after installation, even if OptiScaler uses FSR for upscaling.
 - OptiScaler files are downloaded separately and are not inside this ZIP.
-- This build downloads official OptiScaler nightly-20261109 and checks SHA-256.
+- This build downloads official OptiScaler nightly-20261112 and checks SHA-256.
 - BannerlordFG prefers winmm.dll to reduce DXGI conflicts (e.g. ReShade).
   If another mod already uses winmm.dll, BannerlordFG falls back to dxgi.dll
   when that name is free. Existing DLLs are never overwritten.

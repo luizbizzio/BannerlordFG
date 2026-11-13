@@ -43,13 +43,13 @@ def test_in_game_install_requires_restart_consent_before_automatic_exit():
     begin = MOD.split('private void BeginInstallFromOptions()', 1)[1].split('private void PromptRestartForSetting()', 1)[0]
     ready = MOD.split('private void CheckWorker()', 1)[1].split('private void CancelAutomaticSetup()', 1)[0]
     assert 'Save your campaign before continuing' in begin
-    assert '"Install and restart"' in begin
+    assert '"Install and close"' in begin
     assert '_autoRestartInstallApproved = true; _beginApprovedInstallOnNextTick = true;' in begin
     assert 'if (_beginApprovedInstallOnNextTick)' in MOD
     assert 'BeginInstall(true);' in MOD.split('if (_beginApprovedInstallOnNextTick)', 1)[1].split('}', 1)[0]
     assert 'if (_enteredGameplay && (!_autoRestartInstallApproved || !_noticeVisible))' in ready
-    assert 'ConfirmRestartAfterDownload();' in ready
-    assert 'RestartAfterVerifiedDownload();' in ready
+    assert 'ConfirmCloseAfterDownload();' in ready
+    assert 'CloseAfterVerifiedDownload();' in ready
     assert 'if ((_noticeVisible || _manualInstallRequested)' in ready
 
 

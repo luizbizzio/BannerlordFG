@@ -1,0 +1,47 @@
+BannerlordFG v1.1.2 CANDIDATE - TEST BUILD (SOURCE ONLY)
+=========================================================
+
+This package is based on BannerlordFG-main(7).zip.
+Do not publish as stable until Windows build and in-game tests pass.
+
+Changes
+-------
+- Pins official OptiScaler nightly-20261112, with published SHA-256.
+- Preserves known historical OptiScaler release/digest pairs for
+  manifest-owned safe recovery/uninstall.
+- Fixes WriteAtomic() when a state marker already exists.
+- Propagates installer errors to the CMD host instead of reporting exit 0.
+- Separates uninstall errors from install errors.
+- Detects uninstall CMD early exit without closing the running game.
+- Preserves detailed failure markers instead of replacing them with generic errors.
+- Does not change ReShade proxy handling or automatically enable LoadReshade.
+
+Official asset:
+  OptiScaler_v10.0.0-pre1_20261112.7z
+  SHA-256 c32932ca340ffd605325101077b072209514ed0f110dc8b7ab92486eec1a5d93
+
+Build
+-----
+Run BUILD_WINDOWS.cmd on a Windows PC with Bannerlord installed and the
+Visual Studio 2022 build tools and .NET Framework targeting pack.
+The script should produce BannerlordFG-v1.1.2.zip.
+
+Manual checks BEFORE public release
+-----------------------------------
+1) Fresh install without ReShade: download -> verify -> extract -> restart -> XeFG.
+2) Fresh install with ReShade 6.8.0 Add-on already present, first with
+   ReShade's dxgi.dll and (separately, with backups) its d3d11.dll.
+   Do not overwrite any existing DLL.
+3) Uninstall through the menu after normal startup; verify the original
+   Bannerlord closes and only manifest-owned files are removed.
+4) Repeat uninstall after interrupted install, and inspect:
+   %LOCALAPPDATA%\BannerlordFG\BannerlordFG.log
+   %LOCALAPPDATA%\BannerlordFG\BannerlordFG.log
+   %LOCALAPPDATA%\BannerlordFG\BannerlordFG.log
+   %LOCALAPPDATA%\BannerlordFG\BannerlordFG.log
+5) Verify the normal installer does NOT overwrite existing ReShade files.
+6) Verify old v1.1.1/nightly-20261109 installation is still recognized for
+   safe uninstall, not silently upgraded to the newer nightly.
+7) Restore the game normally after any failed test.
+
+These static tests are NOT a successful Windows compilation or game run.

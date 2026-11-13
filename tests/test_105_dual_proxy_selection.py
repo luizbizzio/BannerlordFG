@@ -11,10 +11,10 @@ U = (ROOT / 'Module/BannerlordFG/UNINSTALL_WINDOWS.ps1').read_text()
 def body(text, start, end):
     return text.split(start, 1)[1].split(end, 1)[0]
 
-def test_official_nightly_20261109_pinned_to_verified_sha256():
-    assert 'internal const string Tag = "nightly-20261109"' in I
-    assert 'OptiScaler_v10.0.0-pre1_20261109.7z' in I
-    assert 'e65cfc7092840cde79b24467bf0b3404bc358e56866478f46811eed06ffaa150' in I
+def test_official_nightly_20261112_pinned_to_verified_sha256():
+    assert 'internal const string Tag = "nightly-20261112"' in I
+    assert 'OptiScaler_v10.0.0-pre1_20261112.7z' in I
+    assert 'c32932ca340ffd605325101077b072209514ed0f110dc8b7ab92486eec1a5d93' in I
     assert 'pkg.Sha256.Equals(PinnedSha256' in I
 
 def test_winmm_is_default_and_dxgi_is_safe_fallback():
@@ -61,7 +61,7 @@ def test_incomplete_recovery_tracks_selected_proxy_and_legacy_tags():
     assert 'owned[managedProxy]' in recover
     assert 'candidate in new[] { managedProxy, "OptiScaler.dll"' in recover
     assert 'File.Delete(' not in recover
-    for tag in ('nightly-20260926', 'nightly-20261016', 'nightly-20261106', 'nightly-20261109'):
+    for tag in ('nightly-20260926', 'nightly-20261016', 'nightly-20261106', 'nightly-20261109', 'nightly-20261112'):
         assert tag in I
 
 def test_runtime_state_and_uninstall_ack_use_selected_proxy():
@@ -73,10 +73,10 @@ def test_runtime_state_and_uninstall_ack_use_selected_proxy():
 
 def test_actual_launcher_process_checked_before_removal():
     assert 'name.Equals("TaleWorlds.MountAndBlade.Launcher",' in I
-    assert 'name.Equals("TaleWorlds.MountAndBlade.Launcher.exe",' in W
+    assert 'p.ProcessName.Equals("TaleWorlds.MountAndBlade.Launcher",' in W
     assert 'TaleWorlds.MountAndBlade.Launcher -ErrorAction SilentlyContinue' in U
 
 def test_no_native_binaries_bundled_and_version_metadata_retained():
     folder = ROOT / 'Module/BannerlordFG'
     assert not [file for file in folder.rglob('*') if file.suffix.lower() in {'.dll', '.exe'}]
-    assert 'v1.1.1' in (folder / 'SubModule.xml').read_text()
+    assert 'v1.1.2' in (folder / 'SubModule.xml').read_text()

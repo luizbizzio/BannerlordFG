@@ -1,4 +1,4 @@
-"""v1.1.1 progress transport and manual ReShade workaround source contracts.
+"""v1.1.2 progress transport and manual ReShade workaround source contracts.
 
 These are static/source tests, not an MSBuild or Bannerlord UI integration test.
 """
@@ -29,7 +29,7 @@ def test_per_game_status_is_atomic_and_not_a_log_scrape():
     assert 'PublishProgress(gameBin, stage, percent, received, total)' in AUTO
     assert 'File.Delete(StatePath(gameBin, ".progress"))' in AUTO
     assert 'Progress status unavailable' in AUTO
-    assert 'first-run.log as a progress transport' in AUTO
+    assert 'unified BannerlordFG.log as a progress transport' in AUTO
 
 
 def test_progress_is_bounded_to_current_install_dialog():
@@ -56,9 +56,9 @@ def test_reshade_remains_a_documented_manual_opt_in():
 
 
 def test_release_identity_111_is_consistent():
-    assert 'v1.1.1' in (ROOT / 'Module/BannerlordFG/SubModule.xml').read_text()
-    assert 'BannerlordFG-v1.1.1.zip' in (ROOT / 'BUILD_WINDOWS.cmd').read_text()
-    assert 'version-1.1.1-blue' in README
+    assert 'v1.1.2' in (ROOT / 'Module/BannerlordFG/SubModule.xml').read_text()
+    assert 'BannerlordFG-v1.1.2.zip' in (ROOT / 'BUILD_WINDOWS.cmd').read_text()
+    assert 'version-1.1.2-blue' in README
     for p in ('src/BannerlordFG/Properties/AssemblyInfo.cs',
               'src/BannerlordFG.Setup/Properties/AssemblyInfo.cs'):
-        assert 'AssemblyVersion("1.1.1.0")' in (ROOT / p).read_text()
+        assert 'AssemblyVersion("1.1.2.0")' in (ROOT / p).read_text()

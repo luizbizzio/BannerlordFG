@@ -1,4 +1,4 @@
-"""v1.1.1 contracts for the WinMM-first, DXGI-fallback safe installer.
+"""v1.1.2 contracts for the WinMM-first, DXGI-fallback safe installer.
 Not a substitute for compiling or testing OptiScaler in Bannerlord.
 """
 from pathlib import Path
@@ -47,9 +47,9 @@ def test_runtime_installer_gate_allows_foreign_winmm_and_foreign_dxgi():
 
 
 def test_metadata_and_recovery_agree_with_110():
-    assert ET.parse(ROOT/'Module/BannerlordFG/SubModule.xml').getroot().find('Version').get('value') == 'v1.1.1'
-    assert 'BannerlordFG-v1.1.1.zip' in (ROOT/'BUILD_WINDOWS.cmd').read_text()
-    assert 'version-1.1.1-blue' in README
+    assert ET.parse(ROOT/'Module/BannerlordFG/SubModule.xml').getroot().find('Version').get('value') == 'v1.1.2'
+    assert 'BannerlordFG-v1.1.2.zip' in (ROOT/'BUILD_WINDOWS.cmd').read_text()
+    assert 'version-1.1.2-blue' in README
     assert 'prefers `winmm.dll` by default' in README
     assert 'Existing dxgi.dll preserved' in RECOVER
     assert 'Existing winmm.dll preserved' in RECOVER

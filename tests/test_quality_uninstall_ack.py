@@ -1,4 +1,4 @@
-"""v1.1.1 no-EXE regression checks. Integration on Windows remains mandatory."""
+"""v1.1.2 no-EXE regression checks. Integration on Windows remains mandatory."""
 from pathlib import Path
 p=Path(__file__).resolve().parents[1]
 def read(path): return (p/path).read_text(encoding='utf-8')
@@ -47,7 +47,7 @@ def test_worker_checks_ownership_then_signals_then_uninstalls_after_exit():
     assert uninstall.index('HasCompleteManagedInstall(gameBin)') < uninstall.index('WriteAtomic(ready, waitPid.ToString())')
     assert uninstall.index('WriteAtomic(ready, waitPid.ToString())') < uninstall.index('OptiInstaller.Uninstall(gameBin, Log)')
     assert uninstall.index('OptiInstaller.Uninstall(gameBin, Log)') < uninstall.index('StatePath(gameBin, ".uninstalled")')
-    assert 'throw; // Propagate failure to maintenance-host.log' in uninstall
+    assert 'throw; // Propagate failure to BannerlordFG.log' in uninstall
     assert 'StatePath(gameBin, ".uninstall-failed")' in uninstall
 
 

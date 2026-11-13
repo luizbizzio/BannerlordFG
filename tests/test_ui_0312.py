@@ -22,7 +22,7 @@ class Changes0312(unittest.TestCase):
         self.assertIn('show_framerate',F)  # Old users are restored only on uninstall.
         self.assertIn('PromptRestartForSetting',S)
         self.assertIn('TaleWorlds.Engine.Utilities.QuitGame();',S)
-        self.assertIn('RunRestartOnly(',C)
+        self.assertIn('RunSettingsAfterExit(',C)
         self.assertIn('FpsCounterCleanup.ApplyRequestedAfterExit(Log);',C)
         self.assertIn('desired + m.Groups["after"].Value',U)
     def test_no_restart_in_live_toggle_path(self):
@@ -34,7 +34,7 @@ class Changes0312(unittest.TestCase):
         self.assertIn('if (!success)',D)
         self.assertIn('BFGOptiScaler}OptiScaler',N)
         x=ET.parse(R/'Module/BannerlordFG/SubModule.xml').getroot()
-        self.assertEqual(x.find('Version').attrib['value'],'v1.1.1')
+        self.assertEqual(x.find('Version').attrib['value'],'v1.1.2')
         self.assertEqual(x.findall('./DependedModules/DependedModule'),[])
         self.assertIn('0Harmony.dll',(R/'BUILD_WINDOWS.cmd').read_text())
     def test_install_and_uninstall_own_original_values_only(self):
@@ -44,9 +44,11 @@ class Changes0312(unittest.TestCase):
         self.assertEqual(C.count('NativeLimiterCleanup.RestoreAfterUninstall(Log);'),2)
         self.assertIn('native-unlimited.marker',L)
         self.assertIn('current < 30f || current > 360f',L)
-    def test_restart_without_killing_game_process(self):
-        self.assertIn('StartWorker("--post-exit-restart")',S)
-        self.assertIn('RelaunchDirect(gameBin, waitPid)',C)
+    def test_close_without_killing_or_restarting_game_process(self):
+        self.assertIn('StartWorker("--post-exit-settings")',S)
+        self.assertIn('TaleWorlds.Engine.Utilities.QuitGame()',S)
+        self.assertNotIn('RelaunchDirect(',C)
+        self.assertNotIn('Process.Start(',C)
         self.assertNotIn('taskkill',S.lower())
         self.assertNotIn('.Kill(',S)
 

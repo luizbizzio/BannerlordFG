@@ -14,7 +14,7 @@ class FirstRunChecks(unittest.TestCase):
     def test_launcher_uses_bannerlordfg_name(self):
         xml = ET.parse(ROOT / 'Module/BannerlordFG/SubModule.xml').getroot()
         self.assertEqual(xml.find('Name').attrib['value'], 'BannerlordFG')
-        self.assertEqual(xml.find('Version').attrib['value'], 'v1.1.1')
+        self.assertEqual(xml.find('Version').attrib['value'], 'v1.1.2')
         self.assertTrue(xml.find('SubModules/SubModule/DLLName').attrib['value'] == 'BannerlordFG.dll')
 
     def test_first_run_only_on_clean_install(self):
@@ -55,17 +55,15 @@ class FirstRunChecks(unittest.TestCase):
         self.assertIn('StatePath(gameBin, ".disabled")', uninst)
         self.assertIn('if (explicitlyRequested) try { File.Delete(State(".disabled")); }', SUB)
 
-    def test_direct_exe_relaunch_on_success_only(self):
-        self.assertIn('CaptureCurrentLaunch()', SUB)
-        self.assertIn('Environment.GetCommandLineArgs()', SUB)
-        self.assertIn('ReadActiveModuleIds()', SUB)
-        self.assertIn('ReadSelectedLauncherModules()', SUB)
-        self.assertIn('Bannerlord.exe', SUB)
-        self.assertIn('File.Delete(marker); // one-shot authorization', AUTO)
-        self.assertIn('RelaunchDirect(gameBin, waitPid);', AUTO)
-        self.assertIn('Arguments = string.Join(" ", args.Select(QuoteWindowsArgument))', AUTO)
-        self.assertIn('FileName = exe', AUTO)
-        self.assertNotIn('steam://rungameid/261550', AUTO)
+    def test_verified_install_closes_game_without_relaunch(self):
+        self.assertIn('CloseAfterVerifiedDownload()', SUB)
+        self.assertIn('TaleWorlds.Engine.Utilities.QuitGame();', SUB)
+        self.assertIn('RunSettingsAfterExit(', AUTO)
+        self.assertNotIn('RelaunchDirect(', AUTO)
+        self.assertNotIn('Process.Start(', AUTO)
+        self.assertNotIn('RunRestartOnly(', AUTO)
+        self.assertNotIn('"--post-exit-restart"', PROGRAM)
+        self.assertNotIn('"--post-exit-install-restart"', PROGRAM)
 
     def test_gpu_detection_and_foreign_file_safety(self):
         self.assertIn('GpuDetection.TryDetectActiveGpu(gameBin, waitPid, Log)', AUTO)

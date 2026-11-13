@@ -42,8 +42,10 @@ def test_uninstall_click_not_silent_and_rechecks_initial_negative():
     assert "StartUninstallAfterConfirmation();" in block
 
 
-def test_worker_does_not_relaunch_before_manifest_commit_or_marker_cleanup():
+def test_worker_installs_after_game_exit_and_never_relaunches():
     run = WORKER.split("internal static void Run(string requestedGameBin, int waitPid)", 1)[1]
+    assert run.index("package.Verify();") < run.index('WriteAtomic(ready, waitPid.ToString());')
     assert run.index("OptiInstaller.InstallAsync(gameBin, gpu") < run.index("installCompleted = true;")
-    assert run.index("mutex.ReleaseMutex()") < run.index("RelaunchDirect(gameBin, waitPid);")
-    assert run.index("File.Delete(pending)") < run.index("RelaunchDirect(gameBin, waitPid);")
+    assert run.index("File.Delete(pending)") < run.index("OptiScaler installation complete")
+    assert run.index("mutex.ReleaseMutex()") < run.index("OptiScaler installation complete")
+    assert "RelaunchDirect" not in run and "Process.Start(" not in WORKER

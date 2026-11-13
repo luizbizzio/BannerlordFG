@@ -2,9 +2,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Security.Cryptography;
-using System.Security.Principal;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,9 +12,8 @@ namespace BannerlordFG.Setup
     /// <summary>
     /// First-run worker started by the Bannerlord C# module. Downloading the pinned
     /// official package is allowed while the game is open. Its graphics DLLs are
-    /// installed ONLY after every Bannerlord process exits. A successful setup is
-    /// relaunched directly from its original executable/argument vector only
-    /// when the mod requests a safe initial-menu restart.
+    /// installed ONLY after every Bannerlord process exits. The game is never
+    /// restarted by the installer: the player launches it manually afterwards.
     /// No dialogs, no Steam launch-option changes, and no silent DLL overwrites.
     /// </summary>
     internal static class AutoFirstRun
@@ -39,19 +36,13 @@ namespace BannerlordFG.Setup
 
         internal static void Log(string message)
         {
-            try
-            {
-                Directory.CreateDirectory(Folder);
-                File.AppendAllText(Path.Combine(Folder, "first-run.log"),
-                    DateTime.UtcNow.ToString("o") + " " + message + Environment.NewLine);
-            }
-            catch { /* A log failure must not affect the running game. */ }
+            BannerlordFG.Diagnostics.UnifiedLog.Write(Folder, "SETUP", message);
         }
 
         // One small per-game status marker shared with the game process. The
         // helper may run elevated or under a different UAC account; its state
         // directory was already validated by MaintenanceEntry. Never use the
-        // append-only first-run.log as a progress transport.
+        // unified BannerlordFG.log as a progress transport.
         private static void PublishProgress(string gameBin, string stage,
             int percent, long received, long total)
         {
@@ -144,189 +135,49 @@ namespace BannerlordFG.Setup
 
         private static void WriteAtomic(string path, string text)
         {
+            // One-shot state files can survive an interrupted earlier attempt.
+            // File.Move refuses to overwrite such a marker, even after all
+            // OptiScaler graphics files were installed successfully.
+            // Keep the temporary file beside the destination to update safely.
             string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             File.WriteAllText(temporary, text, new UTF8Encoding(false));
-            try { File.Move(temporary, path); }
+            try
+            {
+                if (File.Exists(path))
+                    File.Replace(temporary, path, null);
+                else
+                {
+                    try { File.Move(temporary, path); }
+                    catch (IOException)
+                    {
+                        // The destination may have appeared after the Exists
+                        // check. Never delete an existing marker before replace.
+                        if (!File.Exists(path)) throw;
+                        File.Replace(temporary, path, null);
+                    }
+                }
+            }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
         }
 
-        // Quote according to the Windows CommandLineToArgvW escaping convention.
-        // Never send original arguments through cmd.exe or PowerShell.
-        private static string QuoteWindowsArgument(string argument)
-        {
-            if (argument.Length > 0 && !argument.Any(c => char.IsWhiteSpace(c) || c == '"'))
-                return argument;
-            var result = new StringBuilder("\"");
-            int slashes = 0;
-            foreach (char ch in argument)
-            {
-                if (ch == '\\') { slashes++; continue; }
-                if (ch == '"')
-                {
-                    result.Append('\\', slashes * 2 + 1);
-                    result.Append('"');
-                    slashes = 0;
-                    continue;
-                }
-                result.Append('\\', slashes);
-                slashes = 0;
-                result.Append(ch);
-            }
-            result.Append('\\', slashes * 2);
-            result.Append('"');
-            return result.ToString();
-        }
-
-        // A surviving launcher window is not necessarily the running game.
-        // Unlike the STRICT installation/uninstall guard, the relaunch guard
-        // ignores a launcher-only process, but never an actual renderer host.
-        // Access errors are treated as active to avoid starting duplicates.
-        private static bool GameHostActiveForRelaunch(string gameBin)
-        {
-            string ownedProxy = OptiInstaller.GetManagedProxyName(gameBin);
-            string proxyPath = ownedProxy == null ? null :
-                Path.GetFullPath(Path.Combine(gameBin, ownedProxy));
-            foreach (Process process in Process.GetProcesses())
-            {
-                try
-                {
-                    string name = process.ProcessName;
-                    bool launcher = name.Equals("TaleWorlds.MountAndBlade.Launcher", StringComparison.OrdinalIgnoreCase);
-                    if (!launcher &&
-                        !name.Equals("Bannerlord", StringComparison.OrdinalIgnoreCase) &&
-                        !name.Equals("Bannerlord.Native", StringComparison.OrdinalIgnoreCase))
-                        continue;
-                    if (process.HasExited) continue;
-                    string exe = Path.GetFullPath(process.MainModule.FileName);
-                    if (!string.Equals(Path.GetDirectoryName(exe).TrimEnd('\\'),
-                        gameBin.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)) continue;
-                    if (!launcher) return true;
-                    // Bannerlord may host the game inside the launcher executable.
-                    // Do not mistake that renderer host for a harmless launcher.
-                    if (proxyPath == null) return true;
-                    foreach (ProcessModule module in process.Modules)
-                    {
-                        string moduleName = Path.GetFileName(module.FileName);
-                        if (string.Equals(Path.GetFullPath(module.FileName), proxyPath,
-                                StringComparison.OrdinalIgnoreCase) ||
-                            moduleName.Equals("TaleWorlds.Engine.dll", StringComparison.OrdinalIgnoreCase) ||
-                            moduleName.Equals("TaleWorlds.MountAndBlade.dll", StringComparison.OrdinalIgnoreCase))
-                            return true;
-                    }
-                    Log("Relaunch: ignoring launcher-only process PID " + process.Id + ".");
-                }
-                catch (InvalidOperationException) { /* Process exited during scan. */ }
-                catch (ArgumentException) { /* Process exited during scan. */ }
-                catch (Exception ex)
-                {
-                    Log("Relaunch: unable to classify active process safely: " + ex.Message);
-                    return true;
-                }
-                finally { process.Dispose(); }
-            }
-            return false;
-        }
-
-        private static void RelaunchDirect(string gameBin, int waitPid)
-        {
-            try
-            {
-                string marker = StatePath(gameBin, ".restart");
-                if (!File.Exists(marker) || File.ReadAllText(marker).Trim() != waitPid.ToString())
-                {
-                    Log("Setup complete. No auto-restart authorization (gameplay/manual exit).");
-                    return;
-                }
-                File.Delete(marker); // one-shot authorization; no restart loops
-                string launch = StatePath(gameBin, ".launch");
-                if (!File.Exists(launch))
-                {
-                    Log("Direct relaunch unavailable: exact game command line was not captured. Start the game manually.");
-                    return;
-                }
-                // Cross-account UAC lets another administrator maintain Program
-                // Files, but must not start the player's game as that administrator.
-                // Same-account UAC retains the existing automatic relaunch flow.
-                string originalOwner = File.GetAccessControl(launch)
-                    .GetOwner(typeof(SecurityIdentifier)).Value;
-                string helperUser = WindowsIdentity.GetCurrent().User.Value;
-                if (!string.Equals(originalOwner, helperUser, StringComparison.OrdinalIgnoreCase))
-                {
-                    Log("OptiScaler installed. Cross-account UAC detected: direct relaunch as a different administrator is unsafe. Start Bannerlord normally from Steam.");
-                    return;
-                }
-                string[] lines = File.ReadAllLines(launch, Encoding.UTF8);
-                if (lines.Length < 1)
-                    throw new InvalidDataException("Incomplete original game command line.");
-                string exe = Path.GetFullPath(lines[0]);
-                string name = Path.GetFileName(exe);
-                if (!string.Equals(Path.GetDirectoryName(exe).TrimEnd('\\'), gameBin.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase) ||
-                    (!name.Equals("Bannerlord.exe", StringComparison.OrdinalIgnoreCase) &&
-                     !name.Equals("Bannerlord.Native.exe", StringComparison.OrdinalIgnoreCase) &&
-                     !name.Equals("TaleWorlds.MountAndBlade.Launcher.exe", StringComparison.OrdinalIgnoreCase)) ||
-                    !File.Exists(exe))
-                    throw new InvalidDataException("Refusing to launch an executable outside the verified game directory.");
-                var args = lines.Skip(1).ToArray();
-                if (args.Any(s => s.IndexOfAny(new[] { '\r', '\n' }) >= 0))
-                    throw new InvalidDataException("Original game arguments contain invalid characters.");
-                if (!string.Join(" ", args).Contains("_MODULES_"))
-                    Log("Direct relaunch: no _MODULES_ CLI argument; game may use its saved module configuration.");
-                // Allow Steam's bookkeeping to observe the normal shutdown.
-                // The old guard counted a launcher-only window as a running
-                // game and silently abandoned relaunch. We now distinguish
-                // the launcher from a renderer host, without creating duplicates.
-                Thread.Sleep(5000);
-                if (GameHostActiveForRelaunch(gameBin))
-                {
-                    Log("Direct relaunch not needed: Bannerlord was already opened " +
-                        "(possibly manually). Avoiding a duplicate game instance.");
-                    return;
-                }
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = exe,
-                    Arguments = string.Join(" ", args.Select(QuoteWindowsArgument)),
-                    WorkingDirectory = gameBin,
-                    // The maintenance DLL runs under PowerShell with stdout/stderr
-                    // redirected to maintenance-host.log. CreateProcess inherits
-                    // those handles when UseShellExecute=false; the relaunched game
-                    // can then keep that log open and block the next elevated
-                    // maintenance helper (first-relaunch Uninstall timeout).
-                    // ShellExecute detaches the GUI game from the worker's
-                    // redirected standard handles. Keep exact EXE/arguments.
-                    UseShellExecute = true
-                };
-                using (var p = Process.Start(startInfo))
-                {
-                    if (p == null) throw new InvalidOperationException("Process.Start did not return a game process.");
-                    Log("Direct game EXE launched detached from maintenance log handles: " + name);
-                }
-            }
-            catch (Exception ex)
-            {
-                Log("Direct game relaunch failed; use the launcher manually: " + ex);
-            }
-        }
-
-        // Settings changed from native Options. Wait for a normal engine exit,
-        // then restore the FPS flag if Bannerlord re-saved its cached config.
-        // The restart marker and original module vector are one-shot.
-        internal static void RunRestartOnly(string requestedGameBin, int waitPid)
+        // Some graphics settings are saved on game exit. Apply their deferred
+        // cleanup after shutdown, but never start a new Bannerlord process.
+        internal static void RunSettingsAfterExit(string requestedGameBin, int waitPid)
         {
             try
             {
                 if (waitPid <= 0) throw new InvalidOperationException("Missing original game PID.");
-                string gameBin = OptiInstaller.ValidateGameBin(requestedGameBin);
+                OptiInstaller.ValidateGameBin(requestedGameBin);
                 DateTime deadline = DateTime.UtcNow.AddMinutes(15);
                 while ((ProcessAlive(waitPid) || OptiInstaller.BannerlordIsRunning()) &&
                     DateTime.UtcNow < deadline) Thread.Sleep(1000);
                 if (ProcessAlive(waitPid) || OptiInstaller.BannerlordIsRunning())
-                { Log("Restart deferred: Bannerlord did not shut down normally."); return; }
+                { Log("Settings cleanup deferred: Bannerlord did not shut down normally."); return; }
                 FpsCounterCleanup.ApplyRequestedAfterExit(Log);
                 NativeLimiterCleanup.ApplyRequestedAfterExit(Log);
-                RelaunchDirect(gameBin, waitPid);
+                Log("Settings cleanup complete. Start Bannerlord manually when ready.");
             }
-            catch (Exception ex) { Log("Safe settings restart failed: " + ex); }
+            catch (Exception ex) { Log("Settings cleanup failed: " + ex); }
         }
 
         internal static void RunManualUninstall(string requestedGameBin)
@@ -342,7 +193,7 @@ namespace BannerlordFG.Setup
                 FpsCounterCleanup.RestoreAfterUninstall(Log);
                 NativeLimiterCleanup.RestoreAfterUninstall(Log);
                 if (OptiInstaller.HasManagedInstall(gameBin))
-                    throw new IOException("Recovery is incomplete: manifest retained for modified/foreign assets. See first-run.log.");
+                    throw new IOException("Recovery is incomplete: manifest retained for modified/foreign assets. See BannerlordFG.log.");
                 Log("Manual recovery uninstall completed without starting Bannerlord.");
             }
             catch (Exception ex) { Log("Manual uninstall failed: " + ex); throw; }
@@ -391,7 +242,7 @@ namespace BannerlordFG.Setup
                 Log("Game exited. Removing only manifest-owned OptiScaler files...");
                 OptiInstaller.Uninstall(gameBin, Log);
                 if (OptiInstaller.HasManagedInstall(gameBin))
-                    throw new IOException("Uninstall incomplete: modified or foreign assets remain. Manifest retained; inspect first-run.log.");
+                    throw new IOException("Uninstall incomplete: modified or foreign assets remain. Manifest retained; inspect BannerlordFG.log.");
                 // Optional vanilla-setting cleanup must not undo a verified
                 // graphics removal if the user's old config is read-only.
                 try { FpsCounterCleanup.RestoreAfterUninstall(Log); }
@@ -410,7 +261,7 @@ namespace BannerlordFG.Setup
                 Log("Safe uninstall failed: " + ex);
                 if (gameBin != null)
                     try { WriteAtomic(StatePath(gameBin, ".uninstall-failed"), ex.Message); } catch { }
-                throw; // Propagate failure to maintenance-host.log and CMD exit code.
+                throw; // Propagate failure to BannerlordFG.log and CMD exit code.
             }
             finally
             {
@@ -504,7 +355,7 @@ namespace BannerlordFG.Setup
                     throw new TimeoutException("Game still running; installation postponed rather than modifying loaded DLLs.");
 
                 // If the user disabled FG while the helper was downloading, never
-                // install or restart despite the previously verified package.
+                // install despite the previously verified package.
                 if (File.Exists(StatePath(gameBin, ".disabled")))
                     throw new InvalidOperationException("Automatic installation cancelled by player.");
                 // Repeat collision check: another installer might have changed the
@@ -520,7 +371,7 @@ namespace BannerlordFG.Setup
                 Task.Run(() => OptiInstaller.InstallAsync(gameBin, gpu, true /* FSR 3.1 for every GPU including NVIDIA */, Log,
                     true, package)).GetAwaiter().GetResult();
                 WriteAtomic(StatePath(gameBin, ".enable-next-launch"), "true");
-                Log("First-run installation complete. Clearing worker state before direct restart.");
+                Log("First-run installation complete. Clearing worker state before the player launches again.");
                 installCompleted = true;
             }
             catch (Exception ex)
@@ -528,7 +379,9 @@ namespace BannerlordFG.Setup
                 Log("Automatic installation did not complete: " + ex);
                 if (gameBin != null)
                     try { WriteAtomic(StatePath(gameBin, ".blocked"), ex.Message); } catch { }
-                // No restart on failure, and no repeated popup or install loop.
+                // No restart on failure. Report a nonzero exit to the CMD host
+                // as well: a logged managed failure is not a successful install.
+                throw;
             }
             finally
             {
@@ -540,28 +393,21 @@ namespace BannerlordFG.Setup
                 if (pending != null) try { File.Delete(pending); } catch (Exception ex) { Log("Pending marker cleanup: " + ex.Message); }
                 markersCleared = (ready == null || !File.Exists(ready)) &&
                     (pending == null || !File.Exists(pending));
-                // Earlier exits (e.g. ownership conflict, cancellation) also
-                // pass through finally but skip the code after this try block.
-                // Retire one-shot restart authorization in those cases here.
-                if (gameBin != null && !installCompleted)
-                    try { File.Delete(StatePath(gameBin, ".restart")); } catch { }
                 if (lockTaken && mutex != null) mutex.ReleaseMutex();
                 if (mutex != null) mutex.Dispose();
             }
-            // Only relaunch after the helper has disposed its package, removed
-            // .pending/.ready and released the install mutex. This prevents a
-            // fresh game from treating the old successful install as pending.
+            // No auto relaunch: require a complete installation, marker
+            // cleanup, and a separate normal launch initiated by the player.
             if (installCompleted && gameBin != null)
             {
                 if (markersCleared)
-                {
-                    Log("Install markers removed and mutex released; relaunching Bannerlord.");
-                    RelaunchDirect(gameBin, waitPid);
-                }
-                else Log("Install completed, but cleanup markers remain. Relaunch deferred; inspect first-run.log before starting the game manually.");
+                    Log("OptiScaler installation complete. Start Bannerlord manually using your usual launcher.");
+                else
+                    Log("Install completed, but cleanup markers remain. Check BannerlordFG.log before starting the game.");
             }
             if (gameBin != null)
                 try { File.Delete(StatePath(gameBin, ".restart")); } catch { }
+
         }
     }
 }

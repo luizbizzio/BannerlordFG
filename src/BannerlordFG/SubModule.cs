@@ -32,6 +32,9 @@ namespace BannerlordFG
         // Keep the process handle until the first-run worker confirms startup
         // or exits. A PID alone can be reused before the watchdog polls.
         private Process _installCmdProcess;
+        // Separate retained handle: uninstall must not close the game unless
+        // its own maintenance CMD is still running and has acknowledged it.
+        private Process _uninstallCmdProcess;
         private bool _enteredGameplay;
         private bool _requestedExit;
         private bool _awaitingUninstallAck;
@@ -41,18 +44,16 @@ namespace BannerlordFG
         private string _lastProgressNotice;
         private bool _manualInstallRequested;
         // Auto-close from an active campaign only after explicit consent.
-        // Main-menu installs keep their existing automatic relaunch behavior.
+        // Installation never auto-restarts the game.
         private bool _autoRestartInstallApproved;
         private bool _beginApprovedInstallOnNextTick;
         private bool _monitorInstallAtStartup;
         private bool _readyNoticeGiven;
         private bool _failureNoticeGiven;
         private float _pollElapsed;
-        private float _lateCaptureElapsed;
-        private int _lateCaptureRetries;
         // Avoid filesystem access in hot UI hooks. A negative startup snapshot is
         // retried at most once every two seconds, because the elevated helper may
-        // finish committing its manifest during the first automatic relaunch.
+        // finish committing its manifest during the next manual launch.
         private bool _managedStateInitialized;
         private bool _cachedManagedInstall;
         private DateTime _nextManagedInstallProbeUtc;
@@ -71,7 +72,6 @@ namespace BannerlordFG
                 _gameBin = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName);
                 _pid = Process.GetCurrentProcess().Id;
                 _helper = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "BannerlordFG.Helper.cmd");
-                CaptureCurrentLaunch();
                 _controller = new FgController(_gameBin);
                 // Do not reset the native graphics until the maintenance worker
                 // has confirmed full removal of the owned OptiScaler files.
@@ -169,7 +169,7 @@ namespace BannerlordFG
         {
             base.OnApplicationTick(dt);
             NativePerformancePatch.PumpPendingUi();
-            // A first automatic relaunch can overlap the final manifest commit.
+            // A quick manual relaunch can overlap the final manifest commit.
             // Never pin an initial "not installed" snapshot for the whole session;
             // poll cheaply on the normal game tick, not in Harmony's UI hooks.
             if (!_requestedExit && _managedStateInitialized && !_cachedManagedInstall)
@@ -199,21 +199,6 @@ namespace BannerlordFG
                 {
                     _uninstallAckElapsed = 0f;
                     PollUninstallAcknowledgement();
-                }
-            }
-            // OnBeforeInitialModuleScreenSetAsRoot can run before all mod IDs are
-            // exposed by the engine. Retry briefly in the initial menu while
-            // the official launcher/game finish initializing; do not retry
-            // inside a campaign or overwrite an already validated command.
-            if (!_requestedExit && !_enteredGameplay && !string.IsNullOrEmpty(_gameBin) &&
-                _lateCaptureRetries < 4 && !File.Exists(State(".launch")))
-            {
-                _lateCaptureElapsed += dt;
-                if (_lateCaptureElapsed >= 2.0f)
-                {
-                    _lateCaptureElapsed = 0f;
-                    _lateCaptureRetries++;
-                    CaptureCurrentLaunch();
                 }
             }
             // A user may click Install from within a campaign. The worker can
@@ -467,8 +452,8 @@ namespace BannerlordFG
 
         private static string FormatSetupProgress(string raw)
         {
-            const string footer = "\n\nOnce verified, Bannerlord will close normally to install OptiScaler " +
-                "and reopen when possible. You can cancel the installation.";
+            const string footer = "\n\nOnce verified, Bannerlord closes normally. Installation finishes after exit. " +
+                "Open the game yourself afterwards. You can cancel the installation.";
             if (string.IsNullOrEmpty(raw))
                 return "Starting the installer. Waiting for Windows administrator approval..." + footer;
             string[] parts = raw.Split('|');
@@ -480,7 +465,7 @@ namespace BannerlordFG
                 !long.TryParse(parts[2], out received) ||
                 !long.TryParse(parts[3], out total) ||
                 received < 0 || total < 0 || percent < -1 || percent > 100)
-                return "Preparing OptiScaler. Check first-run.log if this takes too long." + footer;
+                return "Preparing OptiScaler. Check BannerlordFG.log if this takes too long." + footer;
             if (parts[0] == "preparing") return "Checking the game and GPU..." + footer;
             if (parts[0] == "connecting") return "Connecting to GitHub..." + footer;
             if (parts[0] == "verifying")
@@ -488,7 +473,7 @@ namespace BannerlordFG
             if (parts[0] == "extracting")
                 return "Download verified. Preparing OptiScaler files before closing the game..." + footer;
             if (parts[0] == "verified")
-                return "OptiScaler downloaded and verified. Preparing a safe restart..." + footer;
+                return "OptiScaler downloaded and verified. Closing the game safely..." + footer;
             if (parts[0] != "downloading")
                 return "Preparing OptiScaler..." + footer;
             if (percent >= 0)
@@ -601,7 +586,7 @@ namespace BannerlordFG
                     }
                 }
                 catch (Exception ex) { Log("Incomplete manifest preflight failed: " + ex.Message); }
-                return "An existing BannerlordFG manifest cannot be safely classified for automatic recovery. No graphics files will be overwritten. Inspect first-run.log and the manifest.";
+                return "An existing BannerlordFG manifest cannot be safely classified for automatic recovery. No graphics files will be overwritten. Inspect BannerlordFG.log and the manifest.";
             }
             if (File.Exists(Path.Combine(_gameBin, "OptiScaler.ini")))
                 return "OptiScaler.ini already exists, but there is no complete BannerlordFG-managed installation. This may be an external or incomplete installation. Back up and resolve it first; the installer will not overwrite its files.";
@@ -649,58 +634,49 @@ namespace BannerlordFG
             _noticeVisible = false;
         }
 
-        private void RestartAfterVerifiedDownload()
+        private void CloseAfterVerifiedDownload()
         {
             if (_requestedExit) return;
             try
             {
-                // Only a verified package prepared for this exact game PID may
-                // request an automatic restart. Never quit after an error.
+                // The elevated worker installs graphics files ONLY after the
+                // verified package is ready and Bannerlord has shut down.
                 string ready = State(".ready");
                 if (!File.Exists(ready) || File.ReadAllText(ready).Trim() != _pid.ToString() ||
                     File.Exists(State(".blocked")) || File.Exists(State(".disabled")))
                 {
-                    ShowInstallFeedback("OptiScaler setup", "The verified download is no longer ready. Check first-run.log before retrying.");
+                    ShowInstallFeedback("OptiScaler setup", "The verified download is no longer ready. Check BannerlordFG.log before retrying.");
                     return;
                 }
-                if (!File.Exists(State(".launch"))) CaptureCurrentLaunch();
-                if (!File.Exists(State(".launch")))
-                {
-                    ShowInstallFeedback("OptiScaler ready",
-                        "The download is verified, but Bannerlord's original launch arguments could not be captured. Save and quit normally; install will finish after game exit. Restart through your launcher.");
-                    return;
-                }
-                File.WriteAllText(State(".restart"), _pid.ToString());
-                Log("Verified release ready. Requesting native QuitGame and automatic relaunch.");
+                Log("Verified download ready. Closing Bannerlord normally. The player must launch it manually after installation.");
                 _requestedExit = true;
                 TaleWorlds.Engine.Utilities.QuitGame();
             }
             catch (Exception ex)
             {
                 _requestedExit = false;
-                try { File.Delete(State(".restart")); } catch { }
-                Log("Verified-download restart failed: " + ex);
-                ShowInstallFeedback("OptiScaler restart failed", ex.Message);
+                Log("Verified-download shutdown failed: " + ex);
+                ShowInstallFeedback("OptiScaler shutdown failed", ex.Message);
             }
         }
 
-        private void ConfirmRestartAfterDownload()
+        private void ConfirmCloseAfterDownload()
         {
             try
             {
                 InformationManager.ShowInquiry(new InquiryData(
                     "OptiScaler download complete",
-                    "OptiScaler was downloaded and verified. Save your campaign before proceeding. Close and automatically restart Bannerlord now?",
-                    true, true, "Restart now", "Later",
-                    () => RestartAfterVerifiedDownload(),
-                    () => Log("Player postponed OptiScaler restart; installation will finish on normal game exit.")),
+                    "OptiScaler was downloaded and verified. Save your campaign before proceeding. Close Bannerlord now to finish installing? You must open it yourself afterwards.",
+                    true, true, "Close game", "Later",
+                    () => CloseAfterVerifiedDownload(),
+                    () => Log("Player postponed OptiScaler installation; it will finish after a normal game exit.")),
                     false, true);
             }
             catch (Exception ex)
             {
-                Log("Restart confirmation unavailable: " + ex);
+                Log("Shutdown confirmation unavailable: " + ex);
                 ShowInstallFeedback("OptiScaler ready",
-                    "Download verified. Save and quit Bannerlord normally; OptiScaler will install after exit. Restart using your launcher.");
+                    "Download verified. Save and quit Bannerlord normally. The installer finishes after exit; open it again yourself.");
             }
         }
 
@@ -715,15 +691,15 @@ namespace BannerlordFG
                     if (_enteredGameplay && (!_autoRestartInstallApproved || !_noticeVisible))
                     {
                         // Gameplay may have started after the original click.
-                        // Offer a one-click automatic restart instead of
-                        // telling the player to close and relaunch manually.
+                        // Ask for a normal shutdown after the verified download.
+                        // Never relaunch Bannerlord automatically.
                         if (!_readyNoticeGiven)
                         {
                             _readyNoticeGiven = true;
                             _manualInstallRequested = false;
                             _monitorInstallAtStartup = false;
                             CloseNotice();
-                            ConfirmRestartAfterDownload();
+                            ConfirmCloseAfterDownload();
                         }
                         return;
                     }
@@ -731,7 +707,7 @@ namespace BannerlordFG
                     _manualInstallRequested = false;
                     _monitorInstallAtStartup = false;
                     _autoRestartInstallApproved = false;
-                    RestartAfterVerifiedDownload();
+                    CloseAfterVerifiedDownload();
                     return;
                 }
                 string blocked = State(".blocked");
@@ -753,7 +729,7 @@ namespace BannerlordFG
                         : "The elevated CMD helper did not confirm startup.";
                     File.WriteAllText(State(".disabled"), "Maintenance startup timed out.");
                     File.WriteAllText(blocked, stage +
-                        " Review maintenance-host.log and Windows Defender Protection History.");
+                        " Review BannerlordFG.log and Windows Defender Protection History.");
                     Log("Maintenance watchdog: " + stage);
                 }
                 if ((_noticeVisible || _manualInstallRequested || _monitorInstallAtStartup) &&
@@ -766,7 +742,7 @@ namespace BannerlordFG
                     CloseNotice();
                     string explanation = File.ReadAllText(blocked);
                     ShowInstallFeedback("OptiScaler installation failed",
-                        explanation + "\n\nThe game remains open. See first-run.log for details.");
+                        explanation + "\n\nThe game remains open. See BannerlordFG.log for details.");
                 }
                 if (_monitorInstallAtStartup && !File.Exists(pending) && !File.Exists(ready))
                     _monitorInstallAtStartup = false;
@@ -793,7 +769,7 @@ namespace BannerlordFG
                     ? "Maintenance CMD started, but setup ended without confirmation."
                     : "Maintenance CMD exited before confirming script startup.";
                 string reason = phase + " CMD exit code: " + exitCode +
-                    ". Check maintenance-host.log and runtime.log in %LOCALAPPDATA%\\BannerlordFG.";
+                    ". Check BannerlordFG.log in %LOCALAPPDATA%\\BannerlordFG.";
                 File.WriteAllText(blocked, reason);
                 File.WriteAllText(State(".disabled"), "Maintenance CMD exited without a worker result.");
                 Log("Maintenance CMD early exit: " + reason);
@@ -805,7 +781,7 @@ namespace BannerlordFG
         {
             try
             {
-                // Worker honours .disabled before touching graphics DLLs or relaunching.
+                // Worker honours .disabled before touching graphics DLLs.
                 File.WriteAllText(State(".disabled"), "First-run cancelled " + DateTime.UtcNow.ToString("o"));
                 CloseNotice();
                 _manualInstallRequested = false;
@@ -833,11 +809,11 @@ namespace BannerlordFG
                     // Once the player confirms, keep the progress popup open so
                     // there is no gameplay between consent and normal shutdown.
                     InformationManager.ShowInquiry(new InquiryData(
-                        "Install OptiScaler and restart",
-                        "Save your campaign before continuing. Bannerlord will download OptiScaler, close automatically after verification, install it, and reopen with your enabled mods. Continue?",
-                        true, true, "Install and restart", "Cancel",
+                        "Install OptiScaler",
+                        "Save your campaign before continuing. Bannerlord will download OptiScaler, close after verification, and finish installing. You must open the game again yourself. Continue?",
+                        true, true, "Install and close", "Cancel",
                         () => { _autoRestartInstallApproved = true; _beginApprovedInstallOnNextTick = true; },
-                        () => { _autoRestartInstallApproved = false; Log("Player cancelled automatic OptiScaler install/restart."); }),
+                        () => { _autoRestartInstallApproved = false; Log("Player cancelled OptiScaler install and shutdown."); }),
                         false, true);
                     return;
                 }
@@ -867,8 +843,8 @@ namespace BannerlordFG
             {
                 InformationManager.ShowInquiry(new InquiryData(
                     "Apply BannerlordFG settings",
-                    "This change requires restarting Bannerlord. Restart now?",
-                    true, true, "Restart now", "Later",
+                    "This change requires reopening Bannerlord. Close the game now, then start it yourself?",
+                    true, true, "Close game", "Later",
                     () => RestartNormallyForSettings(),
                     () => Log("Restart postponed by player; settings are saved.")), false, true);
             }
@@ -880,25 +856,18 @@ namespace BannerlordFG
             if (_requestedExit || _enteredGameplay) return;
             try
             {
-                CaptureCurrentLaunch();
-                if (!File.Exists(State(".launch")))
-                {
-                    Log("Could not reconstruct direct executable/module order; not closing game.");
-                    InformationManager.DisplayMessage(new InformationMessage(
-                        "BannerlordFG: restart manually to apply; saved settings retained."));
-                    return;
-                }
-                File.WriteAllText(State(".restart"), _pid.ToString());
-                if (!StartWorker("--post-exit-restart"))
-                    throw new IOException("Failed to start safe restart helper.");
+                // Apply deferred native settings only after Bannerlord closes.
+                // This helper does not attempt to launch the game afterwards.
+                if (!StartWorker("--post-exit-settings"))
+                    throw new IOException("Failed to start settings cleanup helper.");
                 _requestedExit = true;
-                Log("Settings restart: requesting TaleWorlds' native QuitGame (no process kill).");
+                Log("Settings updated: requesting native QuitGame. Reopen Bannerlord manually.");
                 TaleWorlds.Engine.Utilities.QuitGame();
             }
             catch (Exception ex)
             {
                 _requestedExit = false;
-                Log("FG settings restart deferred: " + ex);
+                Log("FG settings shutdown deferred: " + ex);
             }
         }
 
@@ -944,6 +913,12 @@ namespace BannerlordFG
                     // check without polling an unrelated process with a reused PID.
                     if (_installCmdProcess != null) _installCmdProcess.Dispose();
                     _installCmdProcess = process;
+                    process = null;
+                }
+                else if (flags == "--post-exit-uninstall")
+                {
+                    if (_uninstallCmdProcess != null) _uninstallCmdProcess.Dispose();
+                    _uninstallCmdProcess = process;
                     process = null;
                 }
                 return true;
@@ -1037,7 +1012,7 @@ namespace BannerlordFG
         private void BeginUninstall()
         {
             Log("OptiScaler Uninstall clicked from native Performance menu.");
-            // A freshly relaunched game may have cached the state while the
+            // A freshly launched game may have cached the state while the
             // helper was completing. Revalidate once before acting on a click.
             if (!_cachedManagedInstall)
             {
@@ -1045,7 +1020,7 @@ namespace BannerlordFG
                 if (!IsManagedGraphicsInstalled())
                 {
                     ShowInstallFeedback("OptiScaler uninstall",
-                        "A complete managed installation has not been detected yet. Wait for setup to finish or check first-run.log.");
+                        "A complete managed installation has not been detected yet. Wait for setup to finish or check BannerlordFG.log.");
                     return;
                 }
             }
@@ -1075,7 +1050,7 @@ namespace BannerlordFG
                         "The previous installer has not finished cleaning up. Wait a moment and retry.");
                     return;
                 }
-                Log("Cleared completed install marker; proceeding with first-relaunch uninstall.");
+                Log("Cleared completed install marker; proceeding with uninstall.");
             }
             if (_enteredGameplay)
             {
@@ -1110,7 +1085,7 @@ namespace BannerlordFG
                     try { File.Delete(State(suffix)); } catch { }
                 File.WriteAllText(State(".uninstall-pending"), _pid.ToString());
                 if (!StartWorker("--post-exit-uninstall"))
-                    throw new IOException("Maintenance CMD did not start. Check Windows UAC and maintenance-host.log.");
+                    throw new IOException("Maintenance CMD did not start. Check Windows UAC and BannerlordFG.log.");
                 _awaitingUninstallAck = true;
                 _uninstallAckElapsed = 0f;
                 _uninstallAckDeadline = DateTime.UtcNow.AddMinutes(2);
@@ -1137,16 +1112,44 @@ namespace BannerlordFG
                 {
                     string detail = File.ReadAllText(error);
                     _awaitingUninstallAck = false;
+                    if (_uninstallCmdProcess != null)
+                    {
+                        _uninstallCmdProcess.Dispose();
+                        _uninstallCmdProcess = null;
+                    }
                     try { File.Delete(State(".uninstall-pending")); } catch { }
                     Log("Uninstall worker rejected request; leaving FG unchanged: " + detail);
                     ShowInstallFeedback("OptiScaler uninstall failed", detail +
-                        "\n\nCheck maintenance-host.log and first-run.log for details.");
+                        "\n\nCheck BannerlordFG.log for details.");
+                    return;
+                }
+                // A CMD that has already exited cannot perform post-exit
+                // removal, even if an acknowledgement marker was written
+                // earlier. Do not close the game on a stale .uninstall-ready.
+                var uninstaller = _uninstallCmdProcess;
+                if (uninstaller != null && uninstaller.HasExited)
+                {
+                    int exitCode = uninstaller.ExitCode;
+                    uninstaller.Dispose();
+                    _uninstallCmdProcess = null;
+                    _awaitingUninstallAck = false;
+                    try { File.Delete(State(".uninstall-pending")); } catch { }
+                    string detail = "The uninstall CMD exited before the helper was ready " +
+                        "(exit code " + exitCode + "). No game files were removed by this request. " +
+                        "Check BannerlordFG.log.";
+                    Log("Uninstall helper early exit: " + detail);
+                    ShowInstallFeedback("OptiScaler uninstall failed", detail);
                     return;
                 }
                 string ready = State(".uninstall-ready");
                 if (File.Exists(ready) && File.ReadAllText(ready).Trim() == _pid.ToString())
                 {
                     _awaitingUninstallAck = false;
+                    if (_uninstallCmdProcess != null)
+                    {
+                        _uninstallCmdProcess.Dispose();
+                        _uninstallCmdProcess = null;
+                    }
                     _requestedExit = true;
                     Log("Uninstall helper acknowledged verified ownership; closing Bannerlord normally.");
                     InformationManager.DisplayMessage(new InformationMessage(
@@ -1157,9 +1160,14 @@ namespace BannerlordFG
                 if (DateTime.UtcNow > _uninstallAckDeadline)
                 {
                     _awaitingUninstallAck = false;
+                    if (_uninstallCmdProcess != null)
+                    {
+                        _uninstallCmdProcess.Dispose();
+                        _uninstallCmdProcess = null;
+                    }
                     try { File.Delete(State(".uninstall-pending")); } catch { }
                     string detail = "Maintenance worker did not acknowledge within two minutes. " +
-                        "FG has not been changed. Check UAC and maintenance-uninstall.log.";
+                        "The game remains open. Check BannerlordFG.log.";
                     Log("Uninstall acknowledgement timeout: " + detail);
                     ShowInstallFeedback("OptiScaler uninstall failed", detail);
                 }
@@ -1168,6 +1176,11 @@ namespace BannerlordFG
             {
                 _requestedExit = false;
                 _awaitingUninstallAck = false;
+                if (_uninstallCmdProcess != null)
+                {
+                    _uninstallCmdProcess.Dispose();
+                    _uninstallCmdProcess = null;
+                }
                 Log("Uninstall acknowledgement failed: " + ex);
                 ShowInstallFeedback("OptiScaler uninstall failed", ex.Message);
             }
@@ -1176,7 +1189,7 @@ namespace BannerlordFG
         private bool IsManagedGraphicsInstalled()
         {
             // Successful installs remain cached. Only retry an initial negative
-            // result, at a bounded rate, so early relaunches self-correct.
+            // result, at a bounded rate, so early manual launches self-correct.
             if (_managedStateInitialized && (_cachedManagedInstall ||
                 DateTime.UtcNow < _nextManagedInstallProbeUtc)) return _cachedManagedInstall;
             _nextManagedInstallProbeUtc = DateTime.UtcNow.AddSeconds(2);
@@ -1241,8 +1254,7 @@ namespace BannerlordFG
             try
             {
                 string directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BannerlordFG");
-                Directory.CreateDirectory(directory);
-                File.AppendAllText(Path.Combine(directory, "runtime.log"), DateTime.UtcNow.ToString("o") + " " + message + Environment.NewLine);
+                BannerlordFG.Diagnostics.UnifiedLog.Write(directory, "GAME", message);
             }
             catch { }
         }

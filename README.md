@@ -2,7 +2,7 @@
 
 ![BannerlordFG](assets/heading.png)
 
-[![Version](https://img.shields.io/badge/version-1.1.1-blue)](https://github.com/luizbizzio/BannerlordFG) ![Windows](https://img.shields.io/badge/platform-Windows-0078D4) ![DX11](https://img.shields.io/badge/API-DirectX%2011-FF0000) [![GPLv3](https://img.shields.io/badge/license-GPL--3.0--only-green)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.1.2-blue)](https://github.com/luizbizzio/BannerlordFG) ![Windows](https://img.shields.io/badge/platform-Windows-0078D4) ![DX11](https://img.shields.io/badge/API-DirectX%2011-FF0000) [![GPLv3](https://img.shields.io/badge/license-GPL--3.0--only-green)](LICENSE)
 
 **2x Frame Generation for Mount & Blade II: Bannerlord, built into the game's Performance menu.**
 
@@ -15,10 +15,12 @@ BannerlordFG uses [OptiScaler](https://github.com/optiscaler/OptiScaler) to comb
 1. **[Download the compiled mod ZIP on Nexus Mods](https://www.nexusmods.com/mountandblade2bannerlord/mods/13629)** and extract its `BannerlordFG` folder into `Mount & Blade II Bannerlord/Modules/`.
 2. Enable **BannerlordFG** in the game launcher and start Bannerlord.
 3. Open **Options → Performance → Frame Generation** and select **OptiScaler → Install**.
-4. Confirm the installation. The window shows the real download percentage and separate verification and extraction stages. Wait until the files are prepared: Bannerlord will then close, finish installation, and try to reopen. **Do not reopen the game manually while installation is still finishing.** If automatic relaunch is not available, start the game from your usual launcher after checking `first-run.log`.
+4. After verification, Bannerlord closes normally. The installer finishes copying files once the game has exited. Start Bannerlord yourself after installation is complete. Check `%LOCALAPPDATA%\BannerlordFG\BannerlordFG.log` for diagnostics.
 5. Set **Frame Generation → On** in the same menu.
 
-The first setup requires an internet connection and may request Windows administrator permission. This build pins the official **OptiScaler nightly-20261109** (SHA-256 verified) and extracts the 7z inside the maintenance DLL using SharpCompress, so the player's Windows `tar.exe` does not need LZMA support. **OptiScaler is downloaded separately; its binaries are not included in the mod ZIP.**
+BannerlordFG writes its runtime, installation, uninstall, and maintenance diagnostics to one file: `%LOCALAPPDATA%\BannerlordFG\BannerlordFG.log`. Older logs from previous versions are left untouched. OptiScaler keeps its own upstream logs.
+
+The first setup requires an internet connection and may request Windows administrator permission. This build pins the official **OptiScaler nightly-20261112** (SHA-256 verified) and extracts the 7z inside the maintenance DLL using SharpCompress, so the player's Windows `tar.exe` does not need LZMA support. **OptiScaler is downloaded separately; its binaries are not included in the mod ZIP.**
 
 ## 🎮 In-game controls
 
@@ -51,7 +53,9 @@ Only rename `dxgi.dll` if it belongs to ReShade and `d3d11.dll` does not already
 
 After OptiScaler is installed, you can set `LoadReshade=false` under `[Plugins]` in `OptiScaler.ini`. To use F9 for the ReShade menu, set `KeyOverlay=120,0,0,0` in `ReShade.ini`. These are manual changes, not part of the automatic installation.
 
-This is a tested workaround, not a guarantee. It does **not** guarantee compatibility with every combination of graphics injectors, drivers, and game mods. BannerlordFG does not perform this workaround automatically.
+This is a tested workaround, not a guarantee. It does **not** guarantee compatibility with every combination of graphics injectors, drivers, and game mods. A Bannerlord 1.4.8 / ReShade 6.8.0 Add-on configuration has still crashed with both `dxgi.dll` and `d3d11.dll` as the ReShade proxy.
+
+The separate `ReShade64.dll` + `LoadReshade=true` method has also failed to show the ReShade overlay in testing, so BannerlordFG does not automatically enable it. The `nightly-20261112` OptiScaler pin includes upstream changes to ReShade hook ordering, but this combination **has not yet been validated in-game**. BannerlordFG does not perform this workaround automatically.
 
 ## ⚙️ How it works
 
@@ -153,6 +157,8 @@ BannerlordFG keeps a manifest of the OptiScaler files it installs and checks the
 
 **Updating from v1.0.4:** a complete managed installation is never silently replaced. Uninstall the old OptiScaler from the in-game menu while using your previous BannerlordFG build, then install this updated build and install OptiScaler again. Do not manually delete unrecognized DLLs or the ownership manifest.
 
+**Updating from v1.1.1 to v1.1.2:** updating the BannerlordFG module alone does not replace an existing OptiScaler install. Uninstall the prior managed install through its in-game menu before switching versions. If the menu uninstaller stalls, close the game and follow `RECOVERY_GUIDE.txt` instead. Existing, hash-verified nightly-20261109 manifests remain recognized for safe uninstall/recovery; foreign ReShade DLLs remain untouched.
+
 ## 🛠️ Troubleshooting and removal
 
 | Problem | What to check |
@@ -161,9 +167,10 @@ BannerlordFG keeps a manifest of the OptiScaler files it installs and checks the
 | FG cannot be enabled | Confirm that OptiScaler installed and your GPU exposes a compatible upscaling path. If automatic quality selection fails, choose a supported preset in the game's settings. |
 | FG / FPS toggle has no visible effect | Restart Bannerlord to apply the saved state. Runtime requests have no independent readback. |
 | Unexpected OptiScaler splash | Check for a previous OptiScaler installation; do not remove unknown graphics files blindly. |
-| Download seems stuck | The installer shows real progress in 10% steps when file size is known, then separate SHA-256 verification and extraction stages. If it stops for too long, check `first-run.log` and `maintenance-host.log` in `%LOCALAPPDATA%\BannerlordFG`. |
-| CMD helper exits before startup | The game reports the CMD exit code instead of waiting two minutes when the process is detectable. Check `runtime.log` and `maintenance-host.log` in `%LOCALAPPDATA%\BannerlordFG`; missing maintenance DLLs and other early failures may also appear in the error popup. |
-| Game did not reopen after installation | Check `first-run.log` in `%LOCALAPPDATA%\BannerlordFG`. The helper does not open a duplicate game if Bannerlord is already running. If it says a relaunch was unsafe or failed, start the game normally through Steam after installation is finished. |
+| Download seems stuck | The installer shows real progress in 10% steps when file size is known, then separate SHA-256 verification and extraction stages. If it stops for too long, check `BannerlordFG.log` in `%LOCALAPPDATA%\BannerlordFG`. |
+| CMD helper exits before startup | The game reports the CMD exit code instead of waiting two minutes when the process is detectable. Check `BannerlordFG.log` in `%LOCALAPPDATA%\BannerlordFG`; missing maintenance DLLs and other early failures may also appear in the error popup. |
+| Uninstall does not start | The game reports early uninstall CMD exits and keeps Bannerlord open. Check `BannerlordFG.log` in `%LOCALAPPDATA%\BannerlordFG` where available. |
+| Game remains closed after installation | Expected behavior: start Bannerlord manually after the installer completes. Check `BannerlordFG.log` in `%LOCALAPPDATA%\BannerlordFG` if installation did not finish. |
 | ReShade menu stops opening | See [ReShade compatibility](#reshade-compatibility) and verify that ReShade is the actual owner of the DLL before renaming. |
 
 **Logs and backups:** `%LOCALAPPDATA%\BannerlordFG`
@@ -176,7 +183,7 @@ When [reporting a bug](https://github.com/luizbizzio/BannerlordFG/issues), inclu
 
 Requires an installed copy of Bannerlord, **Visual Studio 2022 Build Tools / MSBuild**, and the **.NET Framework 4.7.2 targeting pack**. With the game closed, update the `GAME` path in [`BUILD_WINDOWS.cmd`](BUILD_WINDOWS.cmd) if needed and run it as administrator.
 
-The build restores the SharpCompress NuGet dependency (including runtime libraries), downloads Harmony when needed, compiles `BannerlordFG.dll` and `BannerlordFG.Maintenance.dll`, packages `BannerlordFG-v1.1.1.zip`, and deploys the build to the configured game directory. The Python source-contract tests **do not** replace a Windows build or an in-game test.
+The build restores the SharpCompress NuGet dependency (including runtime libraries), downloads Harmony when needed, compiles `BannerlordFG.dll` and `BannerlordFG.Maintenance.dll`, packages `BannerlordFG-v1.1.2.zip`, and deploys the build to the configured game directory. The Python source-contract tests **do not** replace a Windows build or an in-game test.
 
 ## ❤️ Credits and license
 

@@ -11,24 +11,23 @@ CMD_PATH = ROOT / "Module/BannerlordFG/bin/Win64_Shipping_Client/BannerlordFG.He
 CMD = CMD_PATH.read_text()
 
 
-def test_game_relaunch_uses_shell_not_inherited_worker_stdout():
-    section = AUTO.split("private static void RelaunchDirect(", 1)[1].split("internal static void RunRestartOnly(", 1)[0]
-    assert "UseShellExecute = true" in section
-    assert "UseShellExecute = false" not in section.split("var startInfo =", 1)[1].split("using (var p", 1)[0]
-    assert "FileName = exe" in section
-    assert "Arguments = string.Join(" in section
-    assert "args.Select(QuoteWindowsArgument)" in section
-    assert "WorkingDirectory = gameBin" in section
-    assert "GetOwner(typeof(SecurityIdentifier))" in section
-    assert "WindowsIdentity.GetCurrent().User.Value" in section
+def test_verified_download_closes_without_an_automatic_relaunch():
+    section = SUB.split('private void CloseAfterVerifiedDownload()', 1)[1].split('private void ConfirmCloseAfterDownload()', 1)[0]
+    assert 'File.ReadAllText(ready).Trim() != _pid.ToString()' in section
+    assert 'TaleWorlds.Engine.Utilities.QuitGame();' in section
+    assert 'StartWorker(' not in section
+    assert '.restart' not in section
+    assert 'RelaunchDirect' not in AUTO
+    assert 'Process.Start(' not in AUTO
 
 
-def test_uninstaller_has_independent_log_from_installer_and_game():
-    invoke = CMD.split(":invoke", 1)[1]  # labels may be mentioned in goto references
-    assert 'if /I "%BFG_OP%"=="--post-exit-uninstall" set "BFG_LOGFILE=%BFG_LOGDIR%\\maintenance-uninstall.log"' in CMD
-    assert '>> "%BFG_LOGFILE%" 2>&1' in CMD
-    assert 'Maintenance host failed, exit %BFG_RC%. >> "%BFG_LOGFILE%"' in CMD
-    assert 'maintenance-uninstall.log' in SUB
+def test_cmd_buffers_powershell_output_then_imports_into_one_log():
+    assert 'BFG_HOST_OUTPUT=' in CMD
+    assert '> "%BFG_HOST_OUTPUT%" 2>&1' in CMD
+    assert 'BannerlordFG.log' in CMD
+    assert 'FileStream' in CMD
+    assert 'FileShare]::Read' in CMD
+    assert '>> "%BFG_LOGFILE%" 2>&1' not in CMD
     assert 'WriteAtomic(ready, waitPid.ToString())' in AUTO
 
 
