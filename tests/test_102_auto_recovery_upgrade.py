@@ -16,8 +16,10 @@ def section(start, end):
 
 def test_known_archive_pairs_are_pinned_to_actual_published_builds():
     constants = dict(re.findall(r'(?:internal|private) const string (\w+) = "([^"]+)";', SETUP))
-    assert constants['Tag'] == 'nightly-20261112'
-    assert constants['PinnedSha256'] == 'c32932ca340ffd605325101077b072209514ed0f110dc8b7ab92486eec1a5d93'
+    assert constants['Tag'] == 'nightly-20261116'
+    assert constants['PinnedSha256'] == '6cd5704b47ff883666df7fec80ce55d113ecc1097a1db5caa3a1058bc007c2d0'
+    assert constants['V112Tag'] == 'nightly-20261112'
+    assert constants['V112PinnedSha256'] == 'c32932ca340ffd605325101077b072209514ed0f110dc8b7ab92486eec1a5d93'
     assert constants['PriorTag'] == 'nightly-20261109'
     assert constants['PriorPinnedSha256'] == 'e65cfc7092840cde79b24467bf0b3404bc358e56866478f46811eed06ffaa150'
     assert constants['OlderTag'] == 'nightly-20261106'
@@ -58,7 +60,7 @@ def test_cross_version_recovery_runs_after_validated_download_and_game_exit():
     worker = WORKER.split('internal static void Run(string requestedGameBin, int waitPid)', 1)[1]
     assert 'CanRecoverIncompleteInstall(gameBin, out recoveryReason)' in worker
     assert worker.index('package.Verify();') < worker.index('WriteAtomic(ready, waitPid.ToString());')
-    assert worker.index('if (ProcessAlive(waitPid) || OptiInstaller.BannerlordIsRunning())') < worker.index('OptiInstaller.RecoverIncompleteInstall(gameBin, Log);')
+    assert worker.index('if (OriginalPidStillUsingGraphics(waitPid, gameBin) || OptiInstaller.BannerlordIsRunning(gameBin))') < worker.index('OptiInstaller.RecoverIncompleteInstall(gameBin, Log);')
     assert worker.index('OptiInstaller.RecoverIncompleteInstall(gameBin, Log);') < worker.index('OptiInstaller.InstallAsync(gameBin, gpu')
     recover = section('internal static void RecoverIncompleteInstall(', 'private static string GetManifestPath(')
     assert recover.index('HashFile(manifest).Equals(HashFile(snapshot)') < recover.index('Uninstall(gameBin, log);')

@@ -3,8 +3,8 @@ ROOT=Path(__file__).resolve().parents[1]
 def get(p): return (ROOT/p).read_text()
 def test_sharpness_removed():
  s=get('src/BannerlordFG/Core/OptiProfile.cs'); assert '"Sharpness", "Sharpness"' not in s; assert '"OverrideSharpness", "false"' in s
-def test_multiplier_fixed_button():
- s=get('src/BannerlordFG/Core/NativePerformancePatch.cs'); assert 'new TextObject("{=BFGFrameGeneration}Frame Generation")' in s; assert 'rows.Add(CreateAction(vm, IdMultiplier, ExplainMultiplier' in s; assert 'rows.Add(CreateChoice(vm, new FgMultiplierData' not in s
+def test_multiplier_is_fixed_in_description_without_extra_row():
+ s=get('src/BannerlordFG/Core/NativePerformancePatch.cs'); assert 'new TextObject("{=BFGFrameGeneration}Frame Generation")' in s; assert 'Fixed at 2x.' in s; assert 'IdMultiplier' not in s; assert 'rows.Add(CreateChoice(vm, new FgMultiplierData' not in s
 def test_fps_description_is_not_hotkey():
  s=get('src/BannerlordFG/Core/NativePerformancePatch.cs'); assert 'Toggle live with Page Up' not in s
 def test_uninstall_has_feedback():

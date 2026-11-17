@@ -20,8 +20,8 @@ def test_new_source_included_in_maintenance_csproj():
 
 def test_runtime_renderer_detection_precedes_fallback():
     block = AUTO.split('private static string DetectGpu(', 1)[1].split('private static bool ProcessAlive', 1)[0]
-    assert block.index('TryDetectActiveGpu') < block.index('DetectByVendorPriority')
-    assert 'return active ?? GpuDetection.DetectByVendorPriority(Log);' in block
+    assert block.index('TryDetectActiveGpu') < block.index('DetectOnlyUnambiguousVendor')
+    assert 'return active ?? GpuDetection.DetectOnlyUnambiguousVendor(Log);' in block
     assert 'Mixed NVIDIA/AMD adapters' not in AUTO
 
 
@@ -37,19 +37,22 @@ def test_renderer_probe_uses_game_exe_pid_and_dxgi_luid():
     assert 'return null;' in GPU
 
 
-def test_fallback_prioritizes_gpu_vendors_without_selection_ui():
-    assert 'new[] { "NVIDIA", "AMD", "Intel" }' in GPU
+def test_fallback_only_on_single_known_vendor_and_never_chooses_by_priority():
+    assert 'DetectOnlyUnambiguousVendor' in GPU
+    assert 'vendors.Count == 1' in GPU
+    assert 'vendors.Count > 1' in GPU
+    assert 'Multiple GPU vendors detected but the active game renderer' in GPU
+    assert 'new[] { "NVIDIA", "AMD", "Intel" }' not in GPU
     assert 'VEN_10DE' in GPU and 'VEN_1002' in GPU and 'VEN_8086' in GPU
-    assert 'No supported NVIDIA, AMD or Intel GPU' in GPU
-    assert 'mixed NVIDIA/AMD adapters' not in GPU
     assert 'MessageBox' not in GPU and 'ShowInquiry' not in GPU
 
 
 def test_probe_cannot_block_install_if_telemetry_fails():
     assert 'catch (Exception ex)' in GPU
-    assert 'applying vendor fallback' in GPU
-    assert 'scored[0].Value < 0.5' in GPU
-    assert 'scored[0].Value < scored[1].Value * 2.0' in GPU
+    assert 'checking for an unambiguous single-vendor fallback' in GPU
+    policy = (ROOT / 'src/Common/RendererDecision.cs').read_text()
+    assert 'measured[0].Percent < 0.5' in policy
+    assert 'measured[0].Percent < measured[1].Percent * 2.0' in policy
 
 
 def test_gpu_probe_is_before_optiscaler_download():
@@ -84,5 +87,5 @@ def test_observed_hybrid_gpu_renderer_name_and_luid_are_supported():
 
 def test_fallback_still_works_if_pdh_unavailable():
     assert 'catch (Exception ex)' in GPU
-    assert 'return active ?? GpuDetection.DetectByVendorPriority(Log);' in AUTO
-    assert 'PDH had no readable GPU Engine counters; applying vendor fallback' in GPU
+    assert 'return active ?? GpuDetection.DetectOnlyUnambiguousVendor(Log);' in AUTO
+    assert 'PDH had no readable GPU Engine counters; checking for an unambiguous single-vendor fallback' in GPU

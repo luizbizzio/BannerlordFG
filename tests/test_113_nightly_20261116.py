@@ -1,4 +1,4 @@
-"""v1.1.2 candidate contracts for OptiScaler nightly-20261112 and safe fallback.
+"""v1.1.3 candidate contracts for OptiScaler nightly-20261116 and safe fallback.
 
 Static checks only. The Windows helper, DLL injection, and game startup require
 a real Windows/Bannerlord validation pass.
@@ -15,16 +15,17 @@ README = (ROOT/"README.md").read_text()
 def constants():
     return dict(re.findall(r'(?:internal|private) const string (\w+) = "([^"]+)";', OPTI))
 
-def test_20261112_pin_is_explicit_and_sha_verified():
+def test_20261116_pin_is_explicit_and_sha_verified():
     c = constants()
-    assert c["Tag"] == "nightly-20261112"
-    assert c["AssetName"] == "OptiScaler_v10.0.0-pre1_20261112.7z"
-    assert c["PinnedSha256"] == "c32932ca340ffd605325101077b072209514ed0f110dc8b7ab92486eec1a5d93"
+    assert c["Tag"] == "nightly-20261116"
+    assert c["AssetName"] == "OptiScaler_v10.0.0-pre1_20261116.7z"
+    assert c["PinnedSha256"] == "6cd5704b47ff883666df7fec80ce55d113ecc1097a1db5caa3a1058bc007c2d0"
     assert "pkg.Sha256.Equals(PinnedSha256" in OPTI
 
 def test_prior_installations_retained_without_reusing_new_digest():
     c = constants()
-    known = [("Prior","nightly-20261109","e65cfc7092840cde79b24467bf0b3404bc358e56866478f46811eed06ffaa150"),
+    known = [("V112","nightly-20261112","c32932ca340ffd605325101077b072209514ed0f110dc8b7ab92486eec1a5d93"),
+             ("Prior","nightly-20261109","e65cfc7092840cde79b24467bf0b3404bc358e56866478f46811eed06ffaa150"),
              ("Older","nightly-20261106","5b92e637cdead99c8d994360850407e93876f00b5f0776f2be39a1ee2caa5726"),
              ("Previous","nightly-20261016","09149a5b17514a0594faf612467267c62ed8851dbc1dde0ade6763f1152e600f"),
              ("Legacy","nightly-20260926","464e2ecc5dab477e940186959a7fdee64880f61c63f52ff0f516e5502bc74e94")]
@@ -50,4 +51,4 @@ def test_no_untested_automatic_reshade_integration():
     assert 'LoadReshade' not in OPTI
     assert 'ReShade64.dll' not in OPTI
     assert 'does not automatically enable it' in README
-    assert 'nightly-20261112' in README
+    assert 'nightly-20261116' in README

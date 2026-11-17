@@ -1,6 +1,7 @@
 """Pure source/package validation. Does not run Windows, tar.exe or the game."""
 import re
 import unittest
+import zipfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -13,7 +14,7 @@ class PackageChecks(unittest.TestCase):
     def test_submodule_declares_correct_dll_and_version(self):
         r = ET.parse(MODULE/'SubModule.xml').getroot()
         self.assertEqual(r.find('Id').attrib['value'], 'BannerlordFG')
-        self.assertEqual(r.find('Version').attrib['value'], 'v1.1.2')
+        self.assertEqual(r.find('Version').attrib['value'], 'v1.1.3')
         self.assertEqual(r.find('SubModules/SubModule/DLLName').attrib['value'], 'BannerlordFG.dll')
         self.assertEqual(r.find('MultiplayerModule').attrib['value'], 'false')
 
@@ -26,12 +27,31 @@ class PackageChecks(unittest.TestCase):
             self.assertTrue(any('Module\\BannerlordFG\\bin\\Win64_Shipping_Client' in e.text
                                 for e in r.findall('.//x:OutputPath', ns)))
 
-    def test_no_redistributed_third_party_dlls(self):
-        self.assertEqual([str(p) for p in MODULE.rglob('*') if p.suffix.lower() in {'.dll','.exe','.addon64'}], [])
+    def test_standalone_zip_has_only_audited_runtime_and_documents(self):
+        runtime = {'0Harmony.dll', 'BannerlordFG.dll', 'BannerlordFG.Maintenance.dll',
+                   'BannerlordFG.Helper.cmd', 'SharpCompress.dll',
+                   'Microsoft.Bcl.AsyncInterfaces.dll', 'System.Buffers.dll',
+                   'System.Memory.dll', 'System.Numerics.Vectors.dll',
+                   'System.Runtime.CompilerServices.Unsafe.dll',
+                   'System.Text.Encoding.CodePages.dll',
+                   'System.Threading.Tasks.Extensions.dll'}
+        documents = {'HARMONY_LICENSE.txt', 'LICENSE', 'README_FIRST_RUN.txt',
+                     'RECOVERY_GUIDE.txt', 'SHARPCOMPRESS_LICENSE.txt',
+                     'SubModule.xml', 'THIRD_PARTY_NOTICES.txt', 'UNINSTALL_WINDOWS.ps1'}
+        expected = ({f'BannerlordFG/{name}' for name in documents} |
+                    {f'BannerlordFG/bin/Win64_Shipping_Client/{name}' for name in runtime})
+        local = {p.relative_to(ROOT/'Module').as_posix() for p in MODULE.rglob('*') if p.is_file()}
+        self.assertEqual(local, expected)
+        with zipfile.ZipFile(ROOT/'BannerlordFG-v1.1.3.zip') as archive:
+            actual = {name for name in archive.namelist() if not name.endswith('/')}
+            self.assertEqual(actual, expected)
+        build = (ROOT/'BUILD_WINDOWS.cmd').read_text()
+        self.assertIn('tar.exe -a -cf "%ARCHIVE%" -C "%TMPBUILD%\\package" BannerlordFG', build)
+        self.assertNotIn('tar.exe -a -cf "%ARCHIVE%" -C "%ROOT%Module" BannerlordFG', build)
 
     def test_release_asset_is_pinned_7z_and_not_zip(self):
-        self.assertIn('OptiScaler_v10.0.0-pre1_20261112.7z',CODE)
-        self.assertIn('c32932ca340ffd605325101077b072209514ed0f110dc8b7ab92486eec1a5d93',CODE)
+        self.assertIn('OptiScaler_v10.0.0-pre1_20261116.7z',CODE)
+        self.assertIn('6cd5704b47ff883666df7fec80ce55d113ecc1097a1db5caa3a1058bc007c2d0',CODE)
         self.assertIn('pkg.Sha256.Equals(PinnedSha256',CODE)
         self.assertIn('SafeSevenZipExtractor.Extract(archive, output)',CODE)
         self.assertNotIn('RunTar(',CODE)
@@ -41,7 +61,7 @@ class PackageChecks(unittest.TestCase):
         self.assertIn('File.Copy(files[i], target, false)',CODE)
         self.assertIn('internal static string ExistingInstallStatus(string gameBin)', CODE)
         self.assertIn('internal static void Uninstall(', CODE)
-        self.assertIn('HashFile(target).Equals(kv.Value',CODE)
+        self.assertIn('DeleteVerifiedFile(item.Path, item.Sha256)',CODE)
 
     def test_manifest_never_adopts_arbitrary_existing_proxies(self):
         self.assertNotIn('foreach (var proxy in Proxies)\n                {\n                    string file = Path.Combine(gameBin, proxy)', CODE)
@@ -58,7 +78,7 @@ class PackageChecks(unittest.TestCase):
     def test_build_script_has_correct_msbuild_discovery(self):
         script=(ROOT/'BUILD_WINDOWS.cmd').read_text()
         self.assertIn('-prerelease -products * -find',script)
-        self.assertIn('BannerlordFG-v1.1.2.zip',script)
+        self.assertIn('BannerlordFG-v1.1.3.zip',script)
         self.assertIn('BannerlordFG.Maintenance.dll', script)
         self.assertIn('BannerlordFG.Helper.cmd', script)
 

@@ -10,7 +10,7 @@ set "SOURCE=%ROOT%Module\BannerlordFG"
 set "OUT=%SOURCE%\bin\Win64_Shipping_Client"
 set "TARGET=%MODULES%\BannerlordFG"
 set "HARMONY=%ROOT%deps\Harmony\0Harmony.dll"
-set "ARCHIVE=%ROOT%BannerlordFG-v1.1.2.zip"
+set "ARCHIVE=%ROOT%BannerlordFG-v1.1.3.zip"
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 set "TMPBUILD=%TEMP%\BannerlordFG-build-%RANDOM%-%RANDOM%"
 set "OLD_ROTATED="
@@ -128,7 +128,27 @@ if exist "%OUT%\BUILD_REQUIRED.txt" del /Q "%OUT%\BUILD_REQUIRED.txt"
 
 echo [4/5] Creating and validating standalone ZIP...
 if exist "%ARCHIVE%" del /Q "%ARCHIVE%"
-tar.exe -a -cf "%ARCHIVE%" -C "%ROOT%Module" BannerlordFG
+rem Stage only the audited release files. Never archive arbitrary local build debris.
+mkdir "%TMPBUILD%\package\BannerlordFG\bin\Win64_Shipping_Client" >nul 2>nul
+if not exist "%TMPBUILD%\package\BannerlordFG\bin\Win64_Shipping_Client\" (
+  set "ERROR_MSG=Could not create isolated ZIP staging directory"
+  goto :fail
+)
+for %%F in (HARMONY_LICENSE.txt LICENSE README_FIRST_RUN.txt RECOVERY_GUIDE.txt SHARPCOMPRESS_LICENSE.txt SubModule.xml THIRD_PARTY_NOTICES.txt UNINSTALL_WINDOWS.ps1) do (
+  copy /Y "%SOURCE%\%%F" "%TMPBUILD%\package\BannerlordFG\%%F" >nul
+  if errorlevel 1 (
+    set "ERROR_MSG=Missing release document: %%F"
+    goto :fail
+  )
+)
+for %%F in (BannerlordFG.dll BannerlordFG.Maintenance.dll BannerlordFG.Helper.cmd 0Harmony.dll SharpCompress.dll Microsoft.Bcl.AsyncInterfaces.dll System.Text.Encoding.CodePages.dll System.Memory.dll System.Buffers.dll System.Numerics.Vectors.dll System.Runtime.CompilerServices.Unsafe.dll System.Threading.Tasks.Extensions.dll) do (
+  copy /Y "%OUT%\%%F" "%TMPBUILD%\package\BannerlordFG\bin\Win64_Shipping_Client\%%F" >nul
+  if errorlevel 1 (
+    set "ERROR_MSG=Missing release runtime file: %%F"
+    goto :fail
+  )
+)
+tar.exe -a -cf "%ARCHIVE%" -C "%TMPBUILD%\package" BannerlordFG
 if errorlevel 1 (
   set "ERROR_MSG=standalone ZIP creation failed"
   goto :fail
@@ -257,7 +277,7 @@ echo.
 if /I "%~1"=="--deploy-only" (
   echo SUCCESS: Previously compiled BannerlordFG archive installed.
 ) else (
-  echo SUCCESS: BannerlordFG v1.1.2 compiled and installed.
+  echo SUCCESS: BannerlordFG v1.1.3 compiled and installed.
 )
 echo Installed: "%TARGET%"
 echo standalone ZIP: "%ARCHIVE%"
@@ -409,7 +429,7 @@ exit /b 0
 
 :deploy_existing_archive
 if "%~2"=="" (
-  set "ERROR_MSG=Missing ZIP path. Usage: BUILD_WINDOWS.cmd --deploy-only ""C:\path\BannerlordFG-v1.1.2.zip"""
+  set "ERROR_MSG=Missing ZIP path. Usage: BUILD_WINDOWS.cmd --deploy-only ""C:\path\BannerlordFG-v1.1.3.zip"""
   goto :fail
 )
 set "ARCHIVE=%~2"
@@ -438,7 +458,7 @@ if defined BACKUP echo Existing module backup, if completed: "%BACKUP%"
 exit /b 1
 
 :check_closed
-for %%P in (Bannerlord.exe Bannerlord.Native.exe Bannerlord.Launcher.exe TaleWorlds.MountAndBlade.Launcher.exe) do (
+for %%P in (Bannerlord.exe Bannerlord.Native.exe Bannerlord.Launcher.exe TaleWorlds.MountAndBlade.Launcher.exe Launcher.Native.exe Bannerlord.BLSE.Launcher.exe Bannerlord.BLSE.LauncherEx.exe Bannerlord.BLSE.Standalone.exe) do (
   tasklist /FI "IMAGENAME eq %%P" /FO CSV /NH 2>nul | find /I "%%P" >nul
   if not errorlevel 1 (
     echo [ERROR] %%P is running. Close the game and launcher normally.

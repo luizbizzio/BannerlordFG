@@ -1,4 +1,4 @@
-"""v1.1.2 source-contract checks. They are not a Windows/game integration test."""
+"""v1.1.3 source-contract checks. They are not a Windows/game integration test."""
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -7,18 +7,17 @@ def source(rel): return (ROOT / rel).read_text(encoding='utf-8')
 
 
 def test_version_100_everywhere_that_is_a_release_identifier():
-    assert ET.parse(ROOT / 'Module/BannerlordFG/SubModule.xml').getroot().find('Version').get('value') == 'v1.1.2'
-    assert 'BannerlordFG-v1.1.2.zip' in source('BUILD_WINDOWS.cmd')
-    assert 'SUCCESS: BannerlordFG v1.1.2 compiled and installed.' in source('BUILD_WINDOWS.cmd')
+    assert ET.parse(ROOT / 'Module/BannerlordFG/SubModule.xml').getroot().find('Version').get('value') == 'v1.1.3'
+    assert 'BannerlordFG-v1.1.3.zip' in source('BUILD_WINDOWS.cmd')
+    assert 'SUCCESS: BannerlordFG v1.1.3 compiled and installed.' in source('BUILD_WINDOWS.cmd')
 
 
-def test_title_and_multiplier_button_with_actual_callback():
+def test_title_and_fixed_multiplier_description():
     ui = source('src/BannerlordFG/Core/NativePerformancePatch.cs')
     assert 'Frame Generation | Multiplier' not in ui
-    assert ui.count('new TextObject("{=BFGFrameGeneration}Frame Generation")') == 2
-    assert 'rows.Add(CreateAction(vm, IdMultiplier, ExplainMultiplier' in ui
-    assert 'private void ExplainMultiplier()' in ui
-    assert 'clicking deliberately has no effect' in ui
+    assert ui.count('new TextObject("{=BFGFrameGeneration}Frame Generation")') >= 2
+    assert 'Fixed at 2x.' in ui
+    assert 'IdMultiplier' not in ui
     assert 'new FgMultiplierData' not in ui
 
 
@@ -89,5 +88,5 @@ def test_disabling_fg_does_not_switch_upscaler_off_mid_session():
 
 def test_version_does_not_change_the_pinned_third_party_build():
     xml = ET.parse(ROOT/'Module/BannerlordFG/SubModule.xml').getroot()
-    assert xml.find('Version').get('value') == 'v1.1.2'
+    assert xml.find('Version').get('value') == 'v1.1.3'
     assert 'nightly-20261016' in source('src/BannerlordFG.Setup/OptiInstaller.cs')

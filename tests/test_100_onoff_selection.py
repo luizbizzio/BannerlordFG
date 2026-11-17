@@ -12,7 +12,7 @@ def test_two_state_control_has_same_options_as_fps_and_is_not_action():
     assert 'new SelectionData(false, "Off"), new SelectionData(false, "On")' in fg
     assert 'new FgEnabledData(_controller, _isInstalled' in UI
     assert 'rows.Add(CreateAction(vm, IdToggle' not in UI
-    assert 'rows.Add(CreateAction(vm, IdMultiplier, ExplainMultiplier' in UI
+    assert 'IdMultiplier' not in UI
     assert 'rows.Add(CreateChoice(vm, new FgShowFpsData' in UI
 
 def test_setting_does_not_send_duplicate_toggle_during_refresh():
@@ -29,4 +29,4 @@ def test_live_toggle_does_not_persist_disabled_backend_or_require_restart():
     assert 'bool success = canToggleLive ? Controller.TryToggleLive(out message) :' in fg
     assert '_refreshUpscalingLocks?.Invoke();' in fg
     assert 'no in-process status API' in MENU
-    assert 'last requested state, not direct backend readback' in UI
+    assert 'last requested state; runtime activity is not directly verified' in UI

@@ -1,4 +1,4 @@
-"""v1.1.2 progress transport and manual ReShade workaround source contracts.
+"""v1.1.3 progress transport and manual ReShade workaround source contracts.
 
 These are static/source tests, not an MSBuild or Bannerlord UI integration test.
 """
@@ -56,9 +56,9 @@ def test_reshade_remains_a_documented_manual_opt_in():
 
 
 def test_release_identity_111_is_consistent():
-    assert 'v1.1.2' in (ROOT / 'Module/BannerlordFG/SubModule.xml').read_text()
-    assert 'BannerlordFG-v1.1.2.zip' in (ROOT / 'BUILD_WINDOWS.cmd').read_text()
-    assert 'version-1.1.2-blue' in README
+    assert 'v1.1.3' in (ROOT / 'Module/BannerlordFG/SubModule.xml').read_text()
+    assert 'BannerlordFG-v1.1.3.zip' in (ROOT / 'BUILD_WINDOWS.cmd').read_text()
+    assert 'version-1.1.3-blue' in README
     for p in ('src/BannerlordFG/Properties/AssemblyInfo.cs',
               'src/BannerlordFG.Setup/Properties/AssemblyInfo.cs'):
-        assert 'AssemblyVersion("1.1.2.0")' in (ROOT / p).read_text()
+        assert 'AssemblyVersion("1.1.3.0")' in (ROOT / p).read_text()

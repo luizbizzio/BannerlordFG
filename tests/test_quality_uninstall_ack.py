@@ -1,4 +1,4 @@
-"""v1.1.2 no-EXE regression checks. Integration on Windows remains mandatory."""
+"""v1.1.3 no-EXE regression checks. Integration on Windows remains mandatory."""
 from pathlib import Path
 p=Path(__file__).resolve().parents[1]
 def read(path): return (p/path).read_text(encoding='utf-8')
@@ -65,11 +65,12 @@ def test_original_native_settings_restored_only_after_verified_removal():
 def test_launcher_process_is_only_ignored_after_managed_proxy_unloads():
     auto=read('src/BannerlordFG.Setup/AutoFirstRun.cs')
     check=auto.split('private static bool OriginalPidStillUsingGraphics(',1)[1].split('internal static bool InstallIfNeeded(',1)[0]
-    assert 'TaleWorlds.MountAndBlade.Launcher' in check
-    assert 'OptiInstaller.GetManagedProxyName(gameBin)' in check
-    assert 'Path.Combine(gameBin, managedName)' in check
-    assert 'foreach (ProcessModule module in p.Modules)' in check
-    assert 'catch { return true; }' in check # Fail closed if module scan denied.
+    assert 'OptiInstaller.IsGameProcessBusy(waitPid, gameBin)' in check
+    guard = read('src/BannerlordFG.Setup/OptiInstaller.cs')
+    assert 'GameHostMarker.IsActive(gameBin, process.Id)' in guard
+    assert 'foreach (ProcessModule module in process.Modules)' in guard
+    assert 'managed.Contains(path)' in guard
+    assert 'GameRunningDecision.IsBusy(false, false, false, false)' in guard
     uninstall=auto.split('internal static void RunUninstall(',1)[1].split('internal static void Run(',1)[0]
     assert 'OriginalPidStillUsingGraphics(waitPid, gameBin)' in uninstall
-    assert 'OptiInstaller.BannerlordIsRunning()' in uninstall
+    assert 'OptiInstaller.BannerlordIsRunning(gameBin)' in uninstall

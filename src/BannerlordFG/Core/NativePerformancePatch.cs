@@ -26,8 +26,8 @@ namespace BannerlordFG.Core
         private const string HarmonyId = "org.bannerlordfg.nativeperformance.100";
         private const string IdInstall = "BannerlordFG.Install";
         private const string IdToggle = "BannerlordFG.Toggle";
-        private const string IdMultiplier = "BannerlordFG.Multiplier";
         private const string IdUninstall = "BannerlordFG.Uninstall";
+        private const string IdExport = "BannerlordFG.ExportDiagnostics";
         private const string IdFpsCounter = "BannerlordFG.ShowFps";
 
         private static NativePerformancePatch _active;
@@ -36,8 +36,10 @@ namespace BannerlordFG.Core
 
         private readonly FgController _controller;
         private readonly Func<bool> _isInstalled;
+        private readonly Func<bool> _needsRepair;
         private readonly Action _install;
         private readonly Action _uninstall;
+        private readonly Action _exportDiagnostics;
         private readonly Action _requestRestart;
         private readonly Action<string> _log;
         // The original strong HashSets retained every screen ever opened. These
@@ -66,21 +68,26 @@ namespace BannerlordFG.Core
         private Harmony _harmony;
 
         private NativePerformancePatch(FgController controller, Func<bool> isInstalled,
-            Action install, Action uninstall, Action requestRestart, Action<string> log)
+            Func<bool> needsRepair, Action install, Action uninstall,
+            Action exportDiagnostics, Action requestRestart, Action<string> log)
         {
             _controller = controller;
             _isInstalled = isInstalled;
+            _needsRepair = needsRepair;
             _install = install;
             _uninstall = uninstall;
+            _exportDiagnostics = exportDiagnostics;
             _requestRestart = requestRestart;
             _log = log;
         }
 
         internal static bool Start(FgController controller, Func<bool> isInstalled,
-            Action install, Action uninstall, Action requestRestart, Action<string> log)
+            Func<bool> needsRepair, Action install, Action uninstall,
+            Action exportDiagnostics, Action requestRestart, Action<string> log)
         {
             if (_active != null) return true;
-            var instance = new NativePerformancePatch(controller, isInstalled, install, uninstall, requestRestart, log);
+            var instance = new NativePerformancePatch(controller, isInstalled, needsRepair,
+                install, uninstall, exportDiagnostics, requestRestart, log);
             try
             {
                 Type vm = typeof(OptionsVM);
@@ -187,7 +194,7 @@ namespace BannerlordFG.Core
                     postfix: new HarmonyMethod(typeof(NativePerformancePatch), nameof(PerformanceGetterPostfix)));
                 instance._harmony.Patch(vmRefresh,
                     postfix: new HarmonyMethod(typeof(NativePerformancePatch), nameof(OptionsRefreshPostfix)));
-                log("Harmony native Performance v1.1.2 installed: Off/On FG selector, silent fixed 2x and two internal live-control keys. Native limiter preserved.");
+                log("Harmony native Performance installed: Off/On FG, fixed 2x and diagnostics export. Native limiter preserved.");
                 return true;
             }
             catch (Exception ex)
@@ -458,41 +465,50 @@ namespace BannerlordFG.Core
             }
             if (rows.Count != 0) return;
             bool installed = _isInstalled();
-            if (installed)
+            foreach (NativeMenuRow kind in NativeMenuLayout.Rows(installed, _needsRepair()))
             {
-                rows.Add(CreateChoice(vm,
-                    new FgEnabledData(_controller, _isInstalled, _requestRestart,
-                        RefreshUpscalingLocks, _log),
-                    "{=BFGToggleName}Frame Generation",
-                    "{=BFGToggleDesc}Frame Generation requires DLSS or FSR upscaling. OptiScaler must initialize once; after that, switch FG live without restarting. The selector shows the last requested state, not direct backend readback."));
-                rows.Add(CreateAction(vm, IdMultiplier, ExplainMultiplier,
-                    "{=BFGMultiplier}Multiplier", "2x",
-                    "{=BFGFixedMultiplier}Fixed at 2x. Additional multipliers are not supported."));
-            }
-            // A default-on checkbox without a working injector is misleading.
-            // Never render OptiScaler's FPS setting until our complete managed
-            // installation is present. The vanilla game's FPS display is separate.
-            if (installed)
-            {
-                try
+                switch (kind)
                 {
-                    rows.Add(CreateChoice(vm, new FgShowFpsData(_controller, _isInstalled,
-                        _log), "{=BFGShowFps}Show FPS Counter",
-                        "{=BFGShowFpsDesc}Show or hide OptiScaler post-FG FPS. Independent game, driver and Steam FPS counters are not controlled here."));
+                    case NativeMenuRow.FrameGeneration:
+                        rows.Add(CreateChoice(vm,
+                            new FgEnabledData(_controller, _isInstalled, _requestRestart,
+                                RefreshUpscalingLocks, _log),
+                            "{=BFGToggleName}Frame Generation",
+                            "{=BFGToggleDesc}Fixed at 2x. Frame Generation requires DLSS or FSR upscaling. OptiScaler must initialize once; after that, switch FG live without restarting. The selector shows the last requested state; runtime activity is not directly verified."));
+                        break;
+                    case NativeMenuRow.FpsCounter:
+                        // The game's separate native FPS display is untouched.
+                        try
+                        {
+                            rows.Add(CreateChoice(vm, new FgShowFpsData(_controller, _isInstalled,
+                                _log), "{=BFGShowFps}FPS Counter",
+                                "{=BFGShowFpsDesc}Show or hide OptiScaler post-FG FPS. Independent game, driver and Steam FPS counters are not controlled here."));
+                        }
+                        catch (Exception ex) { Error("OptiScaler FPS counter row unavailable", ex); }
+                        break;
+                    case NativeMenuRow.ExportDiagnostics:
+                        rows.Add(CreateAction(vm, IdExport, _exportDiagnostics,
+                            "{=BFGDiagnostics}Diagnostics",
+                            "{=BFGExportDiagnostics}Export",
+                            "{=BFGExportDiagnosticsDesc}Save a redacted diagnostics ZIP locally. No files are uploaded."));
+                        break;
+                    case NativeMenuRow.Install:
+                    case NativeMenuRow.Repair:
+                        rows.Add(CreateAction(vm, IdInstall, _install,
+                            "{=BFGOptiScaler}OptiScaler",
+                            kind == NativeMenuRow.Repair ? "{=BFGRepair}Repair" : "{=BFGInstall}Install",
+                            kind == NativeMenuRow.Repair
+                                ? "{=BFGRepairDesc}Verify and recover the incomplete managed installation after game exit. Unknown files remain untouched."
+                                : "{=BFGInstallDesc}Install OptiScaler for frame generation. Game exit is required before graphics files can be copied."));
+                        break;
+                    case NativeMenuRow.Uninstall:
+                        rows.Add(CreateAction(vm, IdUninstall, _uninstall,
+                            "{=BFGOptiScaler}OptiScaler",
+                            "{=BFGUninstall}Uninstall",
+                            "{=BFGUninstallDesc}Uninstall only the OptiScaler files managed by BannerlordFG after the game exits."));
+                        break;
                 }
-                catch (Exception ex) { Error("OptiScaler FPS counter row unavailable", ex); }
             }
-            // Keep OptiScaler installation as the final row.
-            if (!installed)
-                rows.Add(CreateAction(vm, IdInstall, _install,
-                    "{=BFGOptiScaler}OptiScaler",
-                    "{=BFGInstall}Install",
-                    "{=BFGInstallDesc}Install OptiScaler for frame generation. Game exit is required before graphics files can be copied."));
-            else
-                rows.Add(CreateAction(vm, IdUninstall, _uninstall,
-                    "{=BFGOptiScaler}OptiScaler",
-                    "{=BFGUninstall}Uninstall",
-                    "{=BFGUninstallDesc}Uninstall only the OptiScaler files managed by BannerlordFG after the game exits."));
             if (++_attachHitCount <= 8)
                 _log("Frame Generation native UI rows populated via " + origin +
                     " (installed=" + installed + ", rowCount=" + rows.Count + ").");
@@ -626,11 +642,6 @@ namespace BannerlordFG.Core
             }
             catch (Exception ex) { Error("cached VM attach failed through " + origin, ex); }
             finally { _attaching = false; }
-        }
-
-        private void ExplainMultiplier()
-        {
-            // Read-only 2x value: clicking deliberately has no effect, message or INI write.
         }
 
         private void RefreshUpscalingLocks()

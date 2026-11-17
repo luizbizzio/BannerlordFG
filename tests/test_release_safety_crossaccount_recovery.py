@@ -41,7 +41,7 @@ def test_recovery_only_after_download_and_game_exit():
     worker = auto.split('internal static void Run(string requestedGameBin, int waitPid)', 1)[1]
     assert 'CanRecoverIncompleteInstall(gameBin' in worker
     assert worker.index('package.Verify();') < worker.index('WriteAtomic(ready, waitPid.ToString());')
-    assert worker.index('BannerlordIsRunning())') < worker.index('RecoverIncompleteInstall(gameBin, Log)')
+    assert worker.index('BannerlordIsRunning(gameBin))') < worker.index('RecoverIncompleteInstall(gameBin, Log)')
     assert worker.index('RecoverIncompleteInstall(gameBin, Log)') < worker.index('InstallAsync(gameBin, gpu')
 
 
@@ -52,7 +52,7 @@ def test_recovery_preserves_manifests_and_unknown_files():
     assert 'An untracked graphics/configuration file already exists' in setup
     assert 'A previously installed binary was modified' in setup
     assert 'Uninstall(gameBin, log)' in setup
-    assert 'Manifest retained: unrecognized or modified tracked files' in setup
+    assert 'Original manifest and recovery snapshot retained:' in setup
     assert 'FileAttributes.ReparsePoint' in setup
 
 

@@ -25,7 +25,7 @@ class NativePerformanceChecks(unittest.TestCase):
         self.assertIn('rows.Add(CreateAction(vm, IdInstall',N)
         self.assertIn('new FgEnabledData(_controller, _isInstalled',N)
         self.assertIn('rows.Add(CreateAction(vm, IdUninstall',N)
-        self.assertIn('if (!installed)',N)
+        self.assertIn('NativeMenuLayout.Rows(installed, _needsRepair())',N)
         self.assertNotIn('new OptionGroup(title, actions)',N)
         self.assertNotIn('CreateNumeric(vm, new FgBaseLimitData',N)
         self.assertIn('!x.IsNative() && !x.IsAction()',N)
@@ -55,10 +55,22 @@ class NativePerformanceChecks(unittest.TestCase):
         self.assertNotIn('AccessTools.Method(group, "ResetData"', N)
         self.assertNotIn('instance._harmony.Patch(groupReset', N)
         self.assertIn('Missing required Options API:', N)
-        self.assertIn('Harmony native Performance v1.1.2 installed', N)
+        self.assertIn('Harmony native Performance installed', N)
     def test_native_fps_not_modified(self):
         self.assertNotIn('Base FPS Limit',N)
         self.assertNotIn('CreateChoice(vm, new FgMultiplierData', N)
         self.assertNotIn('SetConfig(Limit',N)
+
+    def test_static_heading_and_explicit_export_action(self):
+        self.assertIn('new TextObject("{=BFGFrameGeneration}Frame Generation")', N)
+        self.assertNotIn('group.Name = title', N)
+        self.assertNotIn('RefreshStatusHeaders', N)
+        self.assertIn('case NativeMenuRow.ExportDiagnostics:', N)
+        self.assertIn('"{=BFGDiagnostics}Diagnostics"', N)
+        self.assertIn('"{=BFGExportDiagnostics}Export"', N)
+        self.assertIn('DiagnosticsExportService.ExportAndRevealAsync', S)
+        self.assertIn('DiagnosticsExportWorkflow', S)
+        self.assertIn('PollDiagnosticsExport();', S)
+        self.assertNotIn('IdMultiplier', N)
 
 if __name__ == '__main__': unittest.main(verbosity=2)

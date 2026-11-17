@@ -1,4 +1,4 @@
-"""Source-contract regressions for the v1.1.2 initial-install relaunch race.
+"""Source-contract regressions for the v1.1.3 initial-install relaunch race.
 
 These tests cannot emulate Windows Steam process lifetime or build a DLL.
 """
@@ -24,7 +24,7 @@ def test_only_game_closed_phase_writes_to_game_directory():
     install = OPTI.split("internal static async Task InstallAsync(", 1)[1]
     assert "string root = pkg.ExtractedRoot;" in install
     assert "ExtractSafe(pkg.Archive, extracted)" not in install
-    assert install.index('if (BannerlordIsRunning())\n                    throw new IOException("Bannerlord reopened') < install.index("File.Copy(files[i], target, false);")
+    assert install.index('if (BannerlordIsRunning(gameBin))\n                    throw new IOException("Bannerlord reopened') < install.index("File.Copy(files[i], target, false);")
     assert install.index("pkg.Verify();") < install.index("File.Copy(files[i], target, false);")
     assert 'File.Move(originalProxy, renamedProxy);' in install
 

@@ -5,12 +5,16 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.ComponentModel;
 using System.Net;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using BannerlordFG.Common;
 using System.Web.Script.Serialization;
 
 namespace BannerlordFG.Setup
@@ -18,14 +22,17 @@ namespace BannerlordFG.Setup
     /// <summary>Pinned OptiScaler downloader. OptiScaler is not bundled; extraction uses SharpCompress.</summary>
     internal static class OptiInstaller
     {
-        internal const string Tag = "nightly-20261112";
-        internal const string AssetName = "OptiScaler_v10.0.0-pre1_20261112.7z";
-        // SHA-256 published by GitHub for the official 2026-11-12 release asset.
+        internal const string Tag = "nightly-20261116";
+        internal const string AssetName = "OptiScaler_v10.0.0-pre1_20261116.7z";
+        // SHA-256 published by GitHub for the official 2026-11-16 release asset.
         // Keep this pin immutable; do not silently use newer nightlies.
-        internal const string PinnedSha256 = "c32932ca340ffd605325101077b072209514ed0f110dc8b7ab92486eec1a5d93";
+        internal const string PinnedSha256 = "6cd5704b47ff883666df7fec80ce55d113ecc1097a1db5caa3a1058bc007c2d0";
         // Historical release/digest pairs are accepted ONLY for hash-verified
         // recovery and uninstall. They are never downloaded by this version.
-        // v1.1.1's 20261109 installations must remain uninstallable after upgrade.
+        // v1.1.2's 20261112 installations must remain uninstallable after upgrade.
+        private const string V112Tag = "nightly-20261112";
+        private const string V112PinnedSha256 = "c32932ca340ffd605325101077b072209514ed0f110dc8b7ab92486eec1a5d93";
+        // v1.1.1's 20261109 installations are also recognized for recovery.
         private const string PriorTag = "nightly-20261109";
         private const string PriorPinnedSha256 = "e65cfc7092840cde79b24467bf0b3404bc358e56866478f46811eed06ffaa150";
         private const string OlderTag = "nightly-20261106";
@@ -38,6 +45,8 @@ namespace BannerlordFG.Setup
         {
             return (string.Equals(tag, Tag, StringComparison.Ordinal) &&
                     string.Equals(digest, PinnedSha256, StringComparison.OrdinalIgnoreCase)) ||
+                   (string.Equals(tag, V112Tag, StringComparison.Ordinal) &&
+                    string.Equals(digest, V112PinnedSha256, StringComparison.OrdinalIgnoreCase)) ||
                    (string.Equals(tag, PriorTag, StringComparison.Ordinal) &&
                     string.Equals(digest, PriorPinnedSha256, StringComparison.OrdinalIgnoreCase)) ||
                    (string.Equals(tag, OlderTag, StringComparison.Ordinal) &&
@@ -98,21 +107,10 @@ namespace BannerlordFG.Setup
                 string path = GetManifestPath(gameBin);
                 if (!File.Exists(path) || !File.Exists(Path.Combine(gameBin, "OptiScaler.ini"))) return false;
                 var manifest = ParseJsonObject(File.ReadAllText(path));
-                if (!Str(manifest, "gameBin").Equals(gameBin, StringComparison.OrdinalIgnoreCase) ||
-                    !Str(manifest, "stage").Equals("complete", StringComparison.OrdinalIgnoreCase) ||
-                    !IsKnownManagedArchive(Str(manifest, "tag"), Str(manifest, "archiveSha256"))) return false;
-                string proxy = ManifestProxyName(manifest);
-                string filename = Path.Combine(gameBin, proxy);
-                if (!File.Exists(filename)) return false;
-                object entry;
-                var post = manifest.TryGetValue("postinstallFiles", out entry)
-                    ? entry as Dictionary<string, object> : null;
-                if (post == null) return false;
-                string otherProxy = proxy == "dxgi.dll" ? "winmm.dll" : "dxgi.dll";
-                if (post.ContainsKey(otherProxy)) return false; // Never claim a foreign proxy.
-                string hash = Str(post, proxy);
-                return Regex.IsMatch(hash, "^[a-fA-F0-9]{64}$") &&
-                    HashFile(filename).Equals(hash, StringComparison.OrdinalIgnoreCase);
+                if (!Str(manifest, "stage").Equals("complete", StringComparison.OrdinalIgnoreCase) ||
+                    !manifest.ContainsKey("postinstallFiles")) return false;
+                var plan = VerifiedRemovalPlan(gameBin, path);
+                return plan.Count > 0 && plan.All(item => TrackedFileExists(item.Path));
             }
             catch { return false; }
         }
@@ -142,9 +140,12 @@ namespace BannerlordFG.Setup
 
         internal static string ExistingInstallStatus(string gameBin)
         {
+            if (HasManagedInstall(gameBin))
+                return HasCompleteManagedInstall(gameBin)
+                    ? "BannerlordFG-managed OptiScaler is already installed."
+                    : "BannerlordFG-managed OptiScaler is incomplete; use verified recovery before reinstalling.";
             if (File.Exists(Path.Combine(gameBin, "OptiScaler.ini")))
-                return HasManagedInstall(gameBin) ? "BannerlordFG-managed OptiScaler is already installed." :
-                    "OptiScaler.ini already exists: preserving the user's external installation.";
+                return "OptiScaler.ini already exists: preserving the user's external installation.";
             if (Directory.Exists(Path.Combine(gameBin, "OptiScaler")))
                 return "OptiScaler directory already exists; installation may be incomplete. No changes made.";
 
@@ -181,32 +182,122 @@ namespace BannerlordFG.Setup
             if (Directory.Exists(Path.Combine(p, "bin", "Win64_Shipping_Client")))
                 p = Path.Combine(p, "bin", "Win64_Shipping_Client");
             if (!Directory.Exists(p) || !new[] { "Bannerlord.exe", "Bannerlord.Native.exe",
-                "TaleWorlds.MountAndBlade.Launcher.exe" }
+                "TaleWorlds.MountAndBlade.Launcher.exe", "Launcher.Native.exe" }
                 .Any(exe => File.Exists(Path.Combine(p, exe))))
                 throw new InvalidOperationException("This is not a Bannerlord executable directory.");
             return p;
         }
 
-        internal static bool BannerlordIsRunning()
+        // Paths of only the DLLs recorded by our manifest. A ReShade DLL (or
+        // another external injector) is NOT treated as a managed OptiScaler
+        // dependency unless the validated manifest explicitly owns that path.
+        private static HashSet<string> ManagedRuntimeDllPaths(string gameBin)
         {
-            return Process.GetProcesses().Any(p =>
+            var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string manifestPath = GetManifestPath(gameBin);
+            if (!File.Exists(manifestPath)) return paths;
+            var manifest = ParseJsonObject(File.ReadAllText(manifestPath));
+            string root = Path.GetFullPath(gameBin).TrimEnd(Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            Action<string> add = relative =>
             {
+                if (string.IsNullOrEmpty(relative) ||
+                    !relative.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) return;
+                string full = Path.GetFullPath(Path.Combine(gameBin, relative));
+                if (full.StartsWith(root, StringComparison.OrdinalIgnoreCase)) paths.Add(full);
+            };
+            object installed;
+            if (manifest.TryGetValue("installedFiles", out installed) && installed is object[])
+                foreach (object item in (object[])installed)
+                {
+                    var row = item as Dictionary<string, object>;
+                    if (row != null) add(Str(row, "relativePath"));
+                }
+            object post;
+            if (manifest.TryGetValue("postinstallFiles", out post))
+            {
+                var entries = post as Dictionary<string, object>;
+                if (entries != null) foreach (string relative in entries.Keys) add(relative);
+            }
+            add(ManifestProxyName(manifest));
+            return paths;
+        }
+
+        // Check only this game's recognized EXE (full path, never PID/name alone).
+        // A launcher is busy when its in-game module is alive OR a managed DLL
+        // remains loaded; an ordinary idle launcher is not a game process.
+        internal static bool IsGameProcessBusy(Process process, string gameBin)
+        {
+            try
+            {
+                if (process.HasExited ||
+                    GpuDetection.ExpectedExecutableName(process.ProcessName) == null) return false;
+                if (!GpuDetection.IsExpectedGameProcess(process, gameBin, _ => { }))
+                {
+                    // If Windows denied both MainModule and WMI, we cannot
+                    // prove the DLL isn't loaded. Fail closed, but never block
+                    // a process whose path is positively in another directory.
+                    try
+                    {
+                        string actual = process.MainModule.FileName;
+                        if (!string.IsNullOrEmpty(actual)) return false;
+                    }
+                    catch (System.ComponentModel.Win32Exception) { return true; }
+                    catch (InvalidOperationException) { return false; }
+                    return true;
+                }
+                bool direct = GpuDetection.IsDirectGameProcess(process.ProcessName);
+                bool activeModule = GameHostMarker.IsActive(gameBin, process.Id);
+                if (direct || activeModule) return true;
+                var managed = ManagedRuntimeDllPaths(gameBin);
                 try
                 {
-                    string name = p.ProcessName;
-                    // Only the actual game executables lock the injected graphics DLLs.
-                    // The TaleWorlds launcher may remain open after QuitGame and must not
-                    // block post-exit uninstall indefinitely.
-                    return name.Equals("Bannerlord", StringComparison.OrdinalIgnoreCase) ||
-                           name.Equals("Bannerlord.Native", StringComparison.OrdinalIgnoreCase) ||
-                           // Some installations host the actual running game in the
-                           // TaleWorlds launcher executable. Treat it as active to
-                           // avoid changing loaded graphics DLLs while it runs.
-                           name.Equals("TaleWorlds.MountAndBlade.Launcher", StringComparison.OrdinalIgnoreCase);
+                    foreach (ProcessModule module in process.Modules)
+                    {
+                        string path = Path.GetFullPath(module.FileName);
+                        if (managed.Contains(path)) return true;
+                    }
+                    return GameRunningDecision.IsBusy(false, false, false, true);
                 }
-                catch { return false; }
-                finally { p.Dispose(); }
-            });
+                catch (System.ComponentModel.Win32Exception)
+                {
+                    return GameRunningDecision.IsBusy(false, false, false, false);
+                }
+                catch (InvalidOperationException) { return false; } // exited
+            }
+            catch (ArgumentException) { return false; } // exited/reused
+            catch (InvalidOperationException) { return false; } // exited
+            catch (Exception) { return true; } // cannot prove unloaded
+        }
+
+        internal static bool IsGameProcessBusy(int pid, string gameBin)
+        {
+            if (pid <= 0) return false;
+            try
+            {
+                using (Process process = Process.GetProcessById(pid))
+                    return IsGameProcessBusy(process, gameBin);
+            }
+            catch (ArgumentException) { return false; }
+            catch (InvalidOperationException) { return false; }
+            catch (Exception) { return true; }
+        }
+
+        internal static bool BannerlordIsRunning(string gameBin)
+        {
+            foreach (string name in GpuDetection.GameProcessNames)
+            {
+                Process[] processes;
+                try { processes = Process.GetProcessesByName(name); }
+                catch (InvalidOperationException) { return true; }
+                catch (System.ComponentModel.Win32Exception) { return true; }
+                foreach (Process process in processes)
+                {
+                    using (process)
+                        if (IsGameProcessBusy(process, gameBin)) return true;
+                }
+            }
+            return false;
         }
 
         private static Dictionary<string, object> ParseJsonObject(string data)
@@ -304,7 +395,7 @@ namespace BannerlordFG.Setup
                 if (progress != null) progress("connecting", -1, 0, 0);
                 using (var client = new WebClient())
                 {
-                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.1.2";
+                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.1.3";
                     client.Headers[HttpRequestHeader.Accept] = "application/vnd.github+json";
                     json = await WithDownloadDeadline(client.DownloadStringTaskAsync(Api), client,
                         TimeSpan.FromSeconds(35), "GitHub release metadata");
@@ -322,7 +413,7 @@ namespace BannerlordFG.Setup
                 if (progress != null) progress("downloading", 0, 0, 0);
                 using (var client = new WebClient())
                 {
-                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.1.2";
+                    client.Headers[HttpRequestHeader.UserAgent] = "BannerlordFG-setup/1.1.3";
                     int nextLogPercent = 25;
                     int lastReportedBucket = -1;
                     client.DownloadProgressChanged += (sender, args) => {
@@ -494,6 +585,39 @@ namespace BannerlordFG.Setup
             return text.Substring(0, body.Index) + modified + text.Substring(body.Index + body.Length);
         }
 
+        // Applied only while installing a newly copied, manifest-owned upstream
+        // INI. Startup, live controls and recovery never reset the user's later
+        // logging choices. Preserve unrelated keys and the file's line endings.
+        internal static string ConfigureLoggingDefaults(string text)
+        {
+            if (text == null) throw new ArgumentNullException(nameof(text));
+            string newline = text.Contains("\r\n") ? "\r\n" : "\n";
+            var sectionRx = new Regex(@"(?mi)^\[Log\][ \t]*\r?\n(?<body>[\s\S]*?)(?=^\[|\z)");
+            var sections = sectionRx.Matches(text);
+            if (sections.Count > 1)
+                throw new InvalidDataException("OptiScaler config has duplicate [Log] sections.");
+            string[] keys = { "LogToFile", "LogLevel", "SingleFile" };
+            string[] values = { "true", "2", "true" };
+            if (sections.Count == 0)
+                return text + (text.Length > 0 && !text.EndsWith("\n", StringComparison.Ordinal)
+                    ? newline : "") + "[Log]" + newline +
+                    string.Join(newline, keys.Select((key, i) => key + " = " + values[i])) + newline;
+            var body = sections[0].Groups["body"];
+            string updated = body.Value;
+            for (int i = 0; i < keys.Length; i++)
+            {
+                var keyRx = new Regex(@"(?mi)^[ \t]*" + Regex.Escape(keys[i]) + @"[ \t]*=[^\r\n]*");
+                if (keyRx.Matches(updated).Count > 1)
+                    throw new InvalidDataException("OptiScaler config has duplicate [Log] " + keys[i] + " keys.");
+                if (keyRx.IsMatch(updated))
+                    updated = keyRx.Replace(updated, keys[i] + " = " + values[i], 1);
+                else
+                    updated += (updated.Length > 0 && !updated.EndsWith("\n", StringComparison.Ordinal)
+                        ? newline : "") + keys[i] + " = " + values[i] + newline;
+            }
+            return text.Substring(0, body.Index) + updated + text.Substring(body.Index + body.Length);
+        }
+
         // Disable every external keybinding except the two internal live-control keys.
         internal static string ConfigureLiveControlAssignments(string ini)
         {
@@ -521,7 +645,7 @@ namespace BannerlordFG.Setup
         // completely closed. External graphics injectors remain untouched.
         internal static void ConfigureExistingManagedLiveControls(string gameBin, Action<string> log)
         {
-            if (BannerlordIsRunning()) throw new InvalidOperationException("Close Bannerlord first.");
+            if (BannerlordIsRunning(gameBin)) throw new InvalidOperationException("Close Bannerlord first.");
             if (string.IsNullOrWhiteSpace(gameBin)) throw new ArgumentException("--gamebin is required.");
             gameBin = Path.GetFullPath(gameBin);
             string ini = Path.Combine(gameBin, "OptiScaler.ini");
@@ -589,6 +713,7 @@ namespace BannerlordFG.Setup
             text = PatchIni(text, "Framerate", "FramerateLimit", "0");
             text = PatchIni(text, "UpscaleRatio", "UpscaleRatioOverrideEnabled", "false");
             text = PatchIni(text, "QualityOverrides", "QualityRatioOverrideEnabled", "false");
+            text = ConfigureLoggingDefaults(text);
             string backup = ini + ".bannerlordfg-original.bak";
             if (File.Exists(backup)) throw new IOException("Config backup already exists. Refusing to overwrite it.");
             File.Copy(ini, backup);
@@ -731,6 +856,9 @@ namespace BannerlordFG.Setup
                     "OptiScaler.ini.bannerlordfg-original.bak" })
                     if (File.Exists(Path.Combine(gameBin, candidate)) && !owned.ContainsKey(candidate))
                     { reason = "An untracked graphics/configuration file already exists: " + candidate; return false; }
+                // The removal worker has stricter schema and path rules. Apply
+                // those rules before downloading or asking the game to close.
+                VerifiedRemovalPlan(gameBin, manifestPath);
                 return true;
             }
             catch (Exception ex) { reason = "Could not verify interrupted installation: " + ex.Message; return false; }
@@ -738,7 +866,7 @@ namespace BannerlordFG.Setup
 
         internal static void RecoverIncompleteInstall(string gameBin, Action<string> log)
         {
-            if (BannerlordIsRunning()) throw new InvalidOperationException("Close Bannerlord before recovering graphics files.");
+            if (BannerlordIsRunning(gameBin)) throw new InvalidOperationException("Close Bannerlord before recovering graphics files.");
             string reason;
             if (!CanRecoverIncompleteInstall(gameBin, out reason))
                 throw new InvalidDataException("Interrupted installation cannot be recovered automatically: " + reason);
@@ -775,6 +903,244 @@ namespace BannerlordFG.Setup
                 relativePath.Equals("OptiScaler.ini.bannerlordfg-original.bak", StringComparison.OrdinalIgnoreCase);
         }
 
+        private sealed class ManagedRemovalFile
+        {
+            internal string Relative;
+            internal string Path;
+            internal string Sha256;
+        }
+
+        private static bool TrackedFileExists(string path)
+        {
+            try
+            {
+                FileAttributes attributes = File.GetAttributes(path);
+                if ((attributes & FileAttributes.Directory) != 0)
+                    throw new InvalidDataException("Tracked file became a directory: " + path);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidDataException("Tracked file became a reparse point: " + path);
+                return true;
+            }
+            catch (FileNotFoundException) { return false; }
+            catch (DirectoryNotFoundException) { return false; }
+        }
+
+        private static bool TrackedDirectoryExists(string path)
+        {
+            try
+            {
+                FileAttributes attributes = File.GetAttributes(path);
+                if ((attributes & FileAttributes.Directory) == 0)
+                    throw new InvalidDataException("Managed directory became a file: " + path);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidDataException("Managed directory became redirected: " + path);
+                return true;
+            }
+            catch (FileNotFoundException) { return false; }
+            catch (DirectoryNotFoundException) { return false; }
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern SafeFileHandle CreateFile(string fileName, uint desiredAccess,
+            FileShare shareMode, IntPtr securityAttributes, FileMode creationDisposition,
+            FileAttributes flagsAndAttributes, IntPtr templateFile);
+
+        // Opening with DELETE access checks the ACL and existing handles before
+        // the first managed file is removed. A later race is still handled by
+        // bounded retries and a retained manifest/recovery snapshot.
+        private static void CheckDeleteAccess(string path)
+        {
+            if ((File.GetAttributes(path) & FileAttributes.ReadOnly) != 0)
+                throw new UnauthorizedAccessException("Managed file is read-only: " + path);
+            using (SafeFileHandle handle = CreateFile(path, 0x00010000,
+                FileShare.ReadWrite | FileShare.Delete, IntPtr.Zero, FileMode.Open,
+                FileAttributes.Normal, IntPtr.Zero))
+            {
+                if (!handle.IsInvalid) return;
+                int code = Marshal.GetLastWin32Error();
+                if (code == 5) throw new UnauthorizedAccessException(
+                    "Delete access denied for " + path + ": " + new Win32Exception(code).Message);
+                throw new IOException("Delete access unavailable for " + path +
+                    " (Windows error " + code + ": " + new Win32Exception(code).Message + ").");
+            }
+        }
+
+        private static void RetryTransient(Action operation)
+        {
+            for (int attempt = 0; ; attempt++)
+            {
+                try { operation(); return; }
+                catch (UnauthorizedAccessException) when (attempt < 3)
+                { Thread.Sleep(250 * (attempt + 1)); }
+                catch (IOException) when (attempt < 3)
+                { Thread.Sleep(250 * (attempt + 1)); }
+            }
+        }
+
+        private static void DeleteVerifiedFile(string path, string expectedHash)
+        {
+            RetryTransient(() =>
+            {
+                for (string cursor = path; cursor != null; cursor = Path.GetDirectoryName(cursor))
+                    if (File.Exists(cursor) || Directory.Exists(cursor))
+                        if ((File.GetAttributes(cursor) & FileAttributes.ReparsePoint) != 0)
+                            throw new InvalidDataException("Managed path became redirected.");
+                if (!TrackedFileExists(path)) return;
+                if (!HashFile(path).Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("Managed file changed during delete retry.");
+                File.Delete(path);
+                if (TrackedFileExists(path))
+                    throw new IOException("Managed file still exists after deletion: " + path);
+            });
+        }
+
+        private static bool ValidOwnedPath(string relative, string managedProxy)
+        {
+            if (string.IsNullOrWhiteSpace(relative) || Path.IsPathRooted(relative) ||
+                relative.IndexOf('/') >= 0 ||
+                relative.IndexOf(':') >= 0 || relative.IndexOf('\0') >= 0) return false;
+            string[] parts = relative.Replace('/', '\\').Split('\\');
+            if (parts.Any(x => x.Length == 0 || x == "." || x == ".." ||
+                x.EndsWith(" ", StringComparison.Ordinal) ||
+                x.EndsWith(".", StringComparison.Ordinal) ||
+                x.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)) return false;
+            if (parts.Length == 1)
+                return relative.Equals("OptiScaler.dll", StringComparison.OrdinalIgnoreCase) ||
+                    IsOwnedConfig(relative) ||
+                    relative.Equals(managedProxy, StringComparison.OrdinalIgnoreCase);
+            return parts[0].Equals("OptiScaler", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string SafeManagedPath(string gameBin, string relative, string managedProxy)
+        {
+            if (!ValidOwnedPath(relative, managedProxy))
+                throw new InvalidDataException("Manifest contains an unexpected managed path: " + relative);
+            string root = Path.GetFullPath(gameBin).TrimEnd(Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar);
+            string path = Path.GetFullPath(Path.Combine(root, relative));
+            if (!path.StartsWith(root + Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Manifest path escapes the game directory.");
+            for (string cursor = path; cursor != null;
+                cursor = Path.GetDirectoryName(cursor))
+            {
+                if (File.Exists(cursor) || Directory.Exists(cursor))
+                    if ((File.GetAttributes(cursor) & FileAttributes.ReparsePoint) != 0)
+                        throw new InvalidDataException("Managed path contains a reparse point: " + relative);
+            }
+            if (Directory.Exists(path))
+                throw new InvalidDataException("Manifest file path names a directory: " + relative);
+            return path;
+        }
+
+        private static List<ManagedRemovalFile> VerifiedRemovalPlan(string gameBin,
+            string manifestPath)
+        {
+            if ((File.GetAttributes(manifestPath) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("Install manifest is a reparse point.");
+            var manifest = ParseJsonObject(File.ReadAllText(manifestPath));
+            if (!string.Equals(Path.GetFullPath(Str(manifest, "gameBin")),
+                Path.GetFullPath(gameBin), StringComparison.OrdinalIgnoreCase) ||
+                !IsKnownManagedArchive(Str(manifest, "tag"), Str(manifest, "archiveSha256")))
+                throw new InvalidDataException("Manifest game path or official release checksum is invalid.");
+            string stage = Str(manifest, "stage");
+            if (stage.Length > 0 && !stage.Equals("complete", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Unrecognized manifest stage.");
+            string proxy = ManifestProxyName(manifest);
+            var installed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            object value;
+            if (manifest.TryGetValue("installedFiles", out value))
+            {
+                if (!(value is object[] records)) throw new InvalidDataException("Invalid owned-file list.");
+                foreach (object record in records)
+                {
+                    var row = record as Dictionary<string, object>;
+                    if (row == null) throw new InvalidDataException("Invalid owned-file record.");
+                    string relative = Str(row, "relativePath");
+                    string hash = Str(row, "sha256");
+                    SafeManagedPath(gameBin, relative, proxy);
+                    if (!Regex.IsMatch(hash, "^[a-fA-F0-9]{64}$") || installed.ContainsKey(relative))
+                        throw new InvalidDataException("Duplicate or invalid owned-file checksum.");
+                    installed.Add(relative, hash);
+                }
+            }
+            if (installed.Count == 0)
+                throw new InvalidDataException("Manifest lacks the original owned-file list.");
+            var final = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (manifest.TryGetValue("postinstallFiles", out value))
+            {
+                if (!(value is Dictionary<string, object> post) || post.Count == 0)
+                    throw new InvalidDataException("Invalid final owned-file list.");
+                foreach (var pair in post)
+                {
+                    if (installed.Count > 0 && !installed.ContainsKey(pair.Key) &&
+                        !pair.Key.Equals(proxy, StringComparison.OrdinalIgnoreCase) &&
+                        !pair.Key.Equals("OptiScaler.ini.bannerlordfg-original.bak",
+                            StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("Final manifest claims an untracked file: " + pair.Key);
+                    final.Add(pair.Key, Convert.ToString(pair.Value));
+                }
+            }
+            else
+            {
+                if (installed.Count == 0) throw new InvalidDataException("Manifest has no owned files.");
+                foreach (var pair in installed) final.Add(pair.Key, pair.Value);
+            }
+            if (manifest.TryGetValue("movedProxySha256", out value) ||
+                (proxy == "dxgi.dll" && manifest.TryGetValue("movedDxgiSha256", out value)))
+            {
+                string hash = Convert.ToString(value);
+                if (!installed.TryGetValue("OptiScaler.dll", out string originalProxyHash) ||
+                    !string.Equals(hash, originalProxyHash, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("Managed proxy differs from the original owned DLL.");
+                if (final.ContainsKey(proxy) && !final[proxy].Equals(hash,
+                    StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("Managed proxy checksums disagree.");
+                final[proxy] = hash;
+            }
+            else if (!final.ContainsKey(proxy) && installed.ContainsKey("OptiScaler.dll") &&
+                !TrackedFileExists(SafeManagedPath(gameBin, "OptiScaler.dll", proxy)))
+            {
+                // A crash can occur between the official DLL rename and the
+                // manifest update. Adopt the selected proxy only when its bytes
+                // match the originally recorded OptiScaler.dll exactly.
+                string renamed = SafeManagedPath(gameBin, proxy, proxy);
+                if (TrackedFileExists(renamed))
+                {
+                    if (!HashFile(renamed).Equals(installed["OptiScaler.dll"],
+                        StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("Untracked proxy differs from the original managed DLL.");
+                    final[proxy] = installed["OptiScaler.dll"];
+                }
+            }
+            if (manifest.TryGetValue("expectedBackupSha256", out value) &&
+                !final.ContainsKey("OptiScaler.ini.bannerlordfg-original.bak"))
+                final["OptiScaler.ini.bannerlordfg-original.bak"] = Convert.ToString(value);
+            if (!manifest.ContainsKey("postinstallFiles") &&
+                manifest.TryGetValue("configuredIniSha256", out value))
+                final["OptiScaler.ini"] = Convert.ToString(value);
+            if (stage.Equals("complete", StringComparison.OrdinalIgnoreCase) &&
+                (!final.ContainsKey(proxy) || !final.ContainsKey("OptiScaler.ini")))
+                throw new InvalidDataException("Completed manifest lacks its selected proxy or INI.");
+            var plan = new List<ManagedRemovalFile>();
+            foreach (var pair in final.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                string path = SafeManagedPath(gameBin, pair.Key, proxy);
+                if (!Regex.IsMatch(pair.Value ?? "", "^[a-fA-F0-9]{64}$"))
+                    throw new InvalidDataException("Invalid managed checksum: " + pair.Key);
+                var item = new ManagedRemovalFile { Relative = pair.Key, Path = path,
+                    Sha256 = pair.Value };
+                if (TrackedFileExists(path) && !HashFile(path).Equals(pair.Value,
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!IsOwnedConfig(pair.Key))
+                        throw new InvalidDataException("Managed file was modified; nothing removed: " + pair.Key);
+                }
+                plan.Add(item);
+            }
+            return plan;
+        }
+
         private static string BackupChangedConfig(string source, string relativeName,
             string destinationFolder, Action<string> log)
         {
@@ -790,132 +1156,230 @@ namespace BannerlordFG.Setup
                 try { File.Delete(destination); } catch { }
                 throw new IOException("Recovery backup checksum mismatch. Original preserved: " + source);
             }
-            File.Delete(source);
+            DeleteVerifiedFile(source, originalHash);
             log("Modified managed config preserved in verified recovery backup: " + destination);
             return destination;
         }
 
+        private static void ReportPossibleHolders(string path, Action<string> log)
+        {
+            int found = 0;
+            Process[] processes;
+            try { processes = Process.GetProcesses(); }
+            catch (Exception ex)
+            {
+                log("Process-module inspection unavailable: " + ex.GetType().Name);
+                return;
+            }
+            foreach (Process process in processes)
+            {
+                using (process)
+                {
+                    try
+                    {
+                        if (!process.Modules.Cast<ProcessModule>().Any(module =>
+                            string.Equals(Path.GetFullPath(module.FileName), path,
+                                StringComparison.OrdinalIgnoreCase))) continue;
+                        if (found < 8)
+                            log("Possible managed-DLL holder: " + process.ProcessName +
+                                " PID " + process.Id + ". No process was terminated.");
+                        found++;
+                    }
+                    catch (Exception) { } // Other processes can deny module inspection.
+                }
+            }
+            if (found == 0)
+                log("No owning process module was identifiable. An open handle, security filter, or file policy may still block deletion.");
+        }
+
         internal static void Uninstall(string gameBin, Action<string> log)
         {
-            if (BannerlordIsRunning()) throw new InvalidOperationException("Close Bannerlord before uninstalling.");
+            UninstallCore(gameBin, log, null);
+        }
+
+        // The test seam runs after the real preflight and before an individual
+        // real file deletion, allowing deterministic mid-removal lock/ACL tests.
+        private static void UninstallCore(string gameBin, Action<string> log,
+            Action<string> beforeDeleteForTest)
+        {
+            if (string.IsNullOrWhiteSpace(gameBin)) throw new ArgumentException("Game directory is required.");
+            gameBin = Path.GetFullPath(gameBin);
+            if (BannerlordIsRunning(gameBin))
+                throw new InvalidOperationException("Close Bannerlord before uninstalling.");
             string manifestPath = GetManifestPath(gameBin);
-            if (!File.Exists(manifestPath)) throw new FileNotFoundException("BannerlordFG install manifest not found", manifestPath);
-            var m = ParseJsonObject(File.ReadAllText(manifestPath));
-            if (!Str(m, "gameBin").Equals(gameBin, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException("Manifest does not belong to this Bannerlord installation.");
-            if (!IsKnownManagedArchive(Str(m, "tag"), Str(m, "archiveSha256")))
-                throw new InvalidDataException("Manifest release checksum is not recognized. No files removed.");
-            string managedProxy = ManifestProxyName(m);
-            var checksums = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            object obj;
-            if (m.TryGetValue("postinstallFiles", out obj) && obj is Dictionary<string, object>)
+            if (!File.Exists(manifestPath))
+                throw new FileNotFoundException("BannerlordFG install manifest not found", manifestPath);
+            string state = AutoFirstRun.Folder;
+            Directory.CreateDirectory(state);
+            if ((File.GetAttributes(state) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("Installer state directory is redirected.");
+            string lockPath = Path.Combine(state, "uninstall-" + HashShort(gameBin) + ".lock");
+            if (File.Exists(lockPath) &&
+                (File.GetAttributes(lockPath) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("Uninstall lock path is redirected.");
+            using (var exclusive = new FileStream(lockPath, FileMode.OpenOrCreate,
+                FileAccess.ReadWrite, FileShare.None))
             {
-                var post = (Dictionary<string, object>)obj;
-                string otherProxy = managedProxy == "dxgi.dll" ? "winmm.dll" : "dxgi.dll";
-                if (post.Keys.Any(k => k.Equals(otherProxy, StringComparison.OrdinalIgnoreCase)))
-                    throw new InvalidDataException("Manifest attempts to claim a foreign proxy: " + otherProxy);
-                foreach (var kv in post) checksums[kv.Key] = Convert.ToString(kv.Value);
-            }
-            else if (m.TryGetValue("installedFiles", out obj) && obj is object[])
-            {
-                foreach (var e in (object[])obj)
+                // Validate ALL manifest entries and current hashes before any
+                // game file changes. Missing owned files are normal on retry.
+                List<ManagedRemovalFile> plan = VerifiedRemovalPlan(gameBin, manifestPath);
+                string managedProxy = ManifestProxyName(ParseJsonObject(File.ReadAllText(manifestPath)));
+                foreach (ManagedRemovalFile item in plan)
                 {
-                    var item = e as Dictionary<string, object>;
-                    if (item != null) checksums[Str(item, "relativePath")] = Str(item, "sha256");
-                }
-            }
-            object partialValue;
-            if (m.TryGetValue("movedProxySha256", out partialValue) ||
-                (managedProxy == "dxgi.dll" && m.TryGetValue("movedDxgiSha256", out partialValue)))
-                checksums[managedProxy] = Convert.ToString(partialValue);
-            else if (!checksums.ContainsKey(managedProxy) && checksums.ContainsKey("OptiScaler.dll") &&
-                !File.Exists(Path.Combine(gameBin, "OptiScaler.dll")))
-            {
-                // Crash-safe recovery of a rename before the SHA commit, but
-                // ONLY if the selected proxy's bytes match our official DLL.
-                string renamed = Path.Combine(gameBin, managedProxy);
-                if (File.Exists(renamed) && HashFile(renamed).Equals(
-                    checksums["OptiScaler.dll"], StringComparison.OrdinalIgnoreCase))
-                    checksums[managedProxy] = checksums["OptiScaler.dll"];
-            }
-            if (m.TryGetValue("expectedBackupSha256", out partialValue))
-                checksums["OptiScaler.ini.bannerlordfg-original.bak"] = Convert.ToString(partialValue);
-            if (!m.ContainsKey("postinstallFiles") && m.TryGetValue("configuredIniSha256", out partialValue))
-                checksums["OptiScaler.ini"] = Convert.ToString(partialValue);
-            string root = Path.GetFullPath(gameBin).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            var skipped = new List<string>();
-            var removed = 0;
-            string recoveryFolder = null;
-            foreach (var kv in checksums)
-            {
-                string target = Path.GetFullPath(Path.Combine(gameBin, kv.Key));
-                if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidDataException("Manifest contains a path outside the game executable folder.");
-                if (!File.Exists(target)) continue;
-                // Do not traverse symlinked game files or parent directories
-                // recorded in a compromised or externally altered manifest.
-                for (string cursor = target; cursor.Length > root.Length;
-                    cursor = Path.GetDirectoryName(cursor))
-                {
-                    if ((File.GetAttributes(cursor) & FileAttributes.ReparsePoint) != 0)
-                        throw new InvalidDataException("Tracked path is a reparse point: " + target);
-                }
-                if (!HashFile(target).Equals(kv.Value, StringComparison.OrdinalIgnoreCase))
-                {
-                    if (IsOwnedConfig(kv.Key))
+                    if (!TrackedFileExists(item.Path)) continue;
+                    try { RetryTransient(() => CheckDeleteAccess(item.Path)); }
+                    catch (Exception ex)
                     {
-                        if (recoveryFolder == null)
-                            recoveryFolder = Path.Combine(
-                                AutoFirstRun.Folder, "recovery", "uninstall-" +
-                                DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N"));
-                        BackupChangedConfig(target, kv.Key, recoveryFolder, log);
+                        log("Uninstall preflight stopped before any deletion at " + item.Relative +
+                            ": " + ex.GetType().Name + ". Manifest retained.");
+                        ReportPossibleHolders(item.Path, log);
+                        throw;
+                    }
+                }
+                string recoveryRoot = Path.Combine(state, "recovery");
+                Directory.CreateDirectory(recoveryRoot);
+                if ((File.GetAttributes(recoveryRoot) & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidDataException("Recovery directory is redirected.");
+                string recovery = Path.Combine(recoveryRoot, "uninstall-" +
+                    DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(recovery);
+                string snapshot = Path.Combine(recovery, "install-manifest.json");
+                File.Copy(manifestPath, snapshot, false);
+                if (!HashFile(manifestPath).Equals(HashFile(snapshot), StringComparison.OrdinalIgnoreCase))
+                    throw new IOException("Manifest recovery snapshot verification failed; no files changed.");
+                string manifestHash = HashFile(snapshot);
+                string journal = Path.Combine(recovery, "status.txt");
+                File.WriteAllText(journal, "Started; manifest snapshot verified.\n", new UTF8Encoding(false));
+                int removed = 0;
+                int alreadyMissing = 0;
+                string current = "none";
+                try
+                {
+                    foreach (ManagedRemovalFile item in plan)
+                    {
+                        current = item.Relative;
+                        if (BannerlordIsRunning(gameBin))
+                            throw new IOException("Bannerlord reopened during uninstall.");
+                        // Check again after preflight; another installer may
+                        // have replaced a file or introduced a junction.
+                        SafeManagedPath(gameBin, item.Relative, managedProxy);
+                        if (!TrackedFileExists(item.Path)) { alreadyMissing++; continue; }
+                        string now = HashFile(item.Path);
+                        beforeDeleteForTest?.Invoke(item.Relative);
+                        if (!now.Equals(item.Sha256, StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (!IsOwnedConfig(item.Relative))
+                                throw new InvalidDataException("Managed file changed during uninstall: " + item.Relative);
+                            BackupChangedConfig(item.Path, item.Relative, recovery, log);
+                        }
+                        else DeleteVerifiedFile(item.Path, item.Sha256);
                         removed++;
                     }
-                    else skipped.Add(kv.Key + " (modified DLL/asset; NOT removed)");
-                    continue;
+                    if (plan.Any(item => TrackedFileExists(item.Path)))
+                        throw new IOException("Managed files remain after removal attempt.");
+                    if (!File.Exists(manifestPath) ||
+                        !HashFile(manifestPath).Equals(manifestHash, StringComparison.OrdinalIgnoreCase))
+                        throw new IOException("Install manifest changed during uninstall.");
+                    // Remove only known empty parent directories; never walk
+                    // an untracked subtree or follow a newly created junction.
+                    foreach (string directory in plan.Select(item => Path.GetDirectoryName(item.Path))
+                        .Where(path => !string.Equals(path, gameBin, StringComparison.OrdinalIgnoreCase))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .OrderByDescending(path => path.Length))
+                    {
+                        if (!TrackedDirectoryExists(directory)) continue;
+                        if (!Directory.EnumerateFileSystemEntries(directory).Any())
+                            Directory.Delete(directory);
+                    }
+                    string optiFolder = Path.Combine(gameBin, "OptiScaler");
+                    if (TrackedDirectoryExists(optiFolder) &&
+                        Directory.EnumerateFileSystemEntries(optiFolder).Any())
+                        throw new IOException("Untracked files remain in OptiScaler; manifest retained for review.");
+                    // The original manifest is the retry authority. Remove it
+                    // only after every tracked file has been verified absent.
+                    if ((File.GetAttributes(manifestPath) & FileAttributes.ReparsePoint) != 0)
+                        throw new InvalidDataException("Install manifest became redirected.");
+                    File.Delete(manifestPath);
+                    if (File.Exists(manifestPath))
+                        throw new IOException("Install manifest remained after final removal.");
+                    try { File.WriteAllText(journal, "Complete; removed=" + removed +
+                        "; already missing=" + alreadyMissing + ".\n", new UTF8Encoding(false)); }
+                    catch (Exception ex) { log("Recovery journal update unavailable: " + ex.GetType().Name); }
+                    log("Verified uninstall complete: removed " + removed +
+                        " managed files; " + alreadyMissing + " were already missing. " +
+                        "Recovery snapshot: " + recovery);
                 }
-                File.Delete(target); removed++;
+                catch (Exception ex)
+                {
+                    try { File.WriteAllText(journal, "Incomplete at " + current +
+                        "; removed=" + removed + "; already missing=" + alreadyMissing +
+                        "; error=" + ex.GetType().Name + ". Original manifest retained.\n",
+                        new UTF8Encoding(false)); } catch { }
+                    log("Uninstall incomplete at " + current + " (" + ex.GetType().Name +
+                        "). Original manifest and recovery snapshot retained: " + recovery);
+                    if (ex is UnauthorizedAccessException || ex is IOException)
+                    {
+                        ManagedRemovalFile item = plan.FirstOrDefault(x => x.Relative == current);
+                        try
+                        {
+                            if (item != null && TrackedFileExists(item.Path))
+                                ReportPossibleHolders(item.Path, log);
+                        }
+                        catch (Exception probeError)
+                        { log("Possible file holder inspection failed: " + probeError.GetType().Name); }
+                    }
+                    throw;
+                }
             }
-            // Only remove empty directories corresponding to tracked files.
-            // Never delete the game-bin root or recurse into user content.
-            var ownedDirs = checksums.Keys.Select(k => Path.GetDirectoryName(Path.GetFullPath(Path.Combine(gameBin, k))))
-                .Where(d => d.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-                .Distinct(StringComparer.OrdinalIgnoreCase).OrderByDescending(d => d.Length);
-            foreach (var d in ownedDirs)
-                if (Directory.Exists(d) && !Directory.EnumerateFileSystemEntries(d).Any()) Directory.Delete(d);
-            string optiFolder = Path.Combine(gameBin, "OptiScaler");
-            if (Directory.Exists(optiFolder))
-            {
-                foreach (var d in Directory.GetDirectories(optiFolder, "*", SearchOption.AllDirectories)
-                    .OrderByDescending(x => x.Length))
-                    if (!Directory.EnumerateFileSystemEntries(d).Any()) Directory.Delete(d);
-                if (!Directory.EnumerateFileSystemEntries(optiFolder).Any()) Directory.Delete(optiFolder);
-            }
-            log("Removed " + removed + " files, without overwriting or deleting untracked files.");
-            if (skipped.Count > 0)
-                foreach (var f in skipped) log("Manual check: " + f);
-            string ini = Path.Combine(gameBin, "OptiScaler.ini");
-            if (File.Exists(ini)) log("Some OptiScaler files remain; inspect the game folder before installing again.");
-            if (skipped.Count == 0 && !checksums.Keys.Any(x => File.Exists(Path.Combine(gameBin, x))))
-            {
-                File.Delete(manifestPath);
-                log("Install manifest removed; clean removal completed for all tracked files.");
-                if (recoveryFolder != null)
-                    log("User-modified INI files were preserved outside the game: " + recoveryFolder);
-            }
-            else
-            {
-                log("Manifest retained: unrecognized or modified tracked files require manual review: " + manifestPath);
-                if (recoveryFolder != null)
-                    log("Previously recovered user configs: " + recoveryFolder);
-            }
+        }
+
+        // Official 7z files used only for manual distribution, licensing or docs
+        // are not runtime components. Keep every other asset, including future
+        // resource formats: guessing a DLL-only allowlist would break XeFG.
+        internal static bool IsRuntimePayloadFile(string relativePath)
+        {
+            string rel = (relativePath ?? "").Replace('\\', '/').TrimStart('/');
+            if (string.IsNullOrWhiteSpace(rel)) return false;
+            if (rel.StartsWith("Licenses/", StringComparison.OrdinalIgnoreCase)) return false;
+            string file = Path.GetFileName(rel);
+            return !file.Equals("setup_windows.bat", StringComparison.OrdinalIgnoreCase) &&
+                   !file.Equals("setup_linux.sh", StringComparison.OrdinalIgnoreCase) &&
+                   !file.Equals("README.md", StringComparison.OrdinalIgnoreCase) &&
+                   !file.Equals("README.txt", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string[] RuntimePayloadFiles(string root)
+        {
+            return Directory.GetFiles(root, "*", SearchOption.AllDirectories)
+                .Where(f => IsRuntimePayloadFile(f.Substring(root.Length)
+                    .TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)))
+                .ToArray();
+        }
+
+        // Read-only preflight: avoid closing Bannerlord just to discover known
+        // collisions. Caller has already completed package.Verify(); never
+        // rehash the large package here. No existing files are changed.
+        internal static void CheckRuntimeCollisions(string gameBin, PreparedPackage package)
+        {
+            var root = package.ExtractedRoot;
+            var files = RuntimePayloadFiles(root);
+            if (files.Length == 0 || !files.Any(f =>
+                Path.GetFileName(f).Equals("OptiScaler.dll", StringComparison.OrdinalIgnoreCase)) ||
+                !files.Any(f => Path.GetFileName(f).Equals("OptiScaler.ini", StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidDataException("Verified OptiScaler package is missing required runtime files.");
+            var collisions = files.Select(f => f.Substring(root.Length)
+                .TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+                .Where(rel => File.Exists(Path.Combine(gameBin, rel))).ToArray();
+            if (collisions.Length > 0)
+                throw new IOException("Installation stopped: these runtime files already exist: " +
+                    string.Join(", ", collisions.Take(8)) + ". Existing files were not changed.");
         }
 
         internal static async Task InstallAsync(string gameBin, string vendor, bool useFsr31, Action<string> log, bool unattended = false, PreparedPackage prepared = null)
         {
             if (vendor != "NVIDIA" && vendor != "AMD" && vendor != "Intel")
                 throw new InvalidOperationException("Choose NVIDIA, AMD or Intel.");
-            if (BannerlordIsRunning()) throw new InvalidOperationException("Close the game before installing.");
+            if (BannerlordIsRunning(gameBin)) throw new InvalidOperationException("Close the game before installing.");
             string existing = ExistingInstallStatus(gameBin);
             if (existing != null)
                 throw new InvalidOperationException("Installation blocked: " + existing);
@@ -937,12 +1401,15 @@ namespace BannerlordFG.Setup
                 // The prepared, hash-checked files were already extracted while
                 // the game was open. Keep the post-exit write window short.
                 string root = pkg.ExtractedRoot;
-                var files = Directory.GetFiles(root, "*", SearchOption.AllDirectories);
+                // Manual upstream mode still needs its setup BAT. The automatic
+                // game-menu installation skips scripts and licence documents.
+                var files = unattended ? RuntimePayloadFiles(root) :
+                    Directory.GetFiles(root, "*", SearchOption.AllDirectories);
                 if (files.Length == 0) throw new InvalidDataException("Official package is empty.");
                 var relative = files.Select(f => f.Substring(root.Length).TrimStart(Path.DirectorySeparatorChar)).ToArray();
                 // The game may have been manually reopened between the initial
                 // post-exit check and the final copy. Never write loaded DLLs.
-                if (BannerlordIsRunning())
+                if (BannerlordIsRunning(gameBin))
                     throw new IOException("Bannerlord reopened while OptiScaler was being prepared. " +
                         "Close the game before installing; no graphics files were copied.");
                 // A second proxy selection protects against an external mod
@@ -950,9 +1417,9 @@ namespace BannerlordFG.Setup
                 if (ExistingInstallStatus(gameBin) != null ||
                     !string.Equals(SelectProxyName(gameBin), proxyName, StringComparison.OrdinalIgnoreCase))
                     throw new IOException("Graphics DLL state changed during download. Install cancelled without overwrites.");
-                var collisions = relative.Where(f => File.Exists(Path.Combine(gameBin, f))).ToArray();
-                if (collisions.Length > 0)
-                    throw new IOException("Installation stopped: these target files already exist: " + string.Join(", ", collisions.Take(8)));
+                // Revalidate the exact runtime payload after shutdown (TOCTOU).
+                // A modified user's DLL or INI must never be overwritten.
+                CheckRuntimeCollisions(gameBin, pkg);
                 // Record which newly copied files we own; never delete or overwrite files not on this list.
                 var manifest = new Dictionary<string, object> {
                     { "gameBin", gameBin }, { "tag", Tag }, { "gpu", vendor },
@@ -966,20 +1433,30 @@ namespace BannerlordFG.Setup
                 Directory.CreateDirectory(Path.GetDirectoryName(manifestPath));
                 if (File.Exists(manifestPath)) throw new IOException("A previous BannerlordFG install manifest exists; review it before reinstalling: " + manifestPath);
                 File.WriteAllText(manifestPath, new JavaScriptSerializer().Serialize(manifest));
+                // Copy with CreateNew semantics and track only successful writes.
+                // A different installer might create a target after preflight:
+                // rollback must NEVER delete a colliding third-party file.
+                var created = new List<int>();
                 try
                 {
                     for (int i = 0; i < files.Length; ++i)
                     {
+                        if (BannerlordIsRunning(gameBin))
+                            throw new IOException("Bannerlord reopened during file installation. Stopping without modifying loaded DLLs.");
                         string target = Path.Combine(gameBin, relative[i]);
                         Directory.CreateDirectory(Path.GetDirectoryName(target));
                         File.Copy(files[i], target, false);
+                        created.Add(i);
                     }
                 }
                 catch
                 {
-                    // Roll back only newly written files with original, unmodified SHA256.
-                    for (int i = 0; i < files.Length; ++i)
+                    // Roll back only paths WE successfully created, and only
+                    // when their hashes still match. Leave the manifest for
+                    // hash-checked recovery if another process is using them.
+                    foreach (int i in created)
                     {
+                        if (BannerlordIsRunning(gameBin)) break;
                         string target = Path.Combine(gameBin, relative[i]);
                         if (File.Exists(target) && HashFile(target) == HashFile(files[i])) File.Delete(target);
                     }

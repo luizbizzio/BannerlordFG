@@ -1,4 +1,4 @@
-"""Contract checks for generic, non-owning d3d11.dll coexistence in v1.1.2.
+"""Contract checks for generic, non-owning d3d11.dll coexistence in v1.1.3.
 
 Static checks only: validate Windows compilation and behavior inside Bannerlord.
 """
@@ -26,7 +26,8 @@ def test_menu_gate_allows_generic_d3d11():
 
 def test_install_never_overwrites_foreign_d3d11():
     install = INSTALLER.split('internal static async Task InstallAsync(',1)[1]
-    assert 'File.Exists(Path.Combine(gameBin, f))' in install
+    assert 'CheckRuntimeCollisions(gameBin, pkg)' in install
+    assert 'File.Exists(Path.Combine(gameBin, rel))' in INSTALLER
     assert 'File.Copy(files[i], target, false)' in install
     assert 'checksums' in INSTALLER
     assert 'No external file will be overwritten.' in UI

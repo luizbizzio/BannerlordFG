@@ -2,7 +2,7 @@
 
 ![BannerlordFG](assets/heading.png)
 
-[![Version](https://img.shields.io/badge/version-1.1.2-blue)](https://github.com/luizbizzio/BannerlordFG) ![Windows](https://img.shields.io/badge/platform-Windows-0078D4) ![DX11](https://img.shields.io/badge/API-DirectX%2011-FF0000) [![GPLv3](https://img.shields.io/badge/license-GPL--3.0--only-green)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.1.3-blue)](https://github.com/luizbizzio/BannerlordFG) ![Windows](https://img.shields.io/badge/platform-Windows-0078D4) ![DX11](https://img.shields.io/badge/API-DirectX%2011-FF0000) [![GPLv3](https://img.shields.io/badge/license-GPL--3.0--only-green)](LICENSE)
 
 **2x Frame Generation for Mount & Blade II: Bannerlord, built into the game's Performance menu.**
 
@@ -20,7 +20,9 @@ BannerlordFG uses [OptiScaler](https://github.com/optiscaler/OptiScaler) to comb
 
 BannerlordFG writes its runtime, installation, uninstall, and maintenance diagnostics to one file: `%LOCALAPPDATA%\BannerlordFG\BannerlordFG.log`. Older logs from previous versions are left untouched. OptiScaler keeps its own upstream logs.
 
-The first setup requires an internet connection and may request Windows administrator permission. This build pins the official **OptiScaler nightly-20261112** (SHA-256 verified) and extracts the 7z inside the maintenance DLL using SharpCompress, so the player's Windows `tar.exe` does not need LZMA support. **OptiScaler is downloaded separately; its binaries are not included in the mod ZIP.**
+New BannerlordFG-managed OptiScaler installs set `[Log] LogToFile=true`, `LogLevel=2` (Info), and `SingleFile=true` in the copied `OptiScaler.ini`. Later user edits to those settings are left alone. **Diagnostics → Export** creates a local ZIP and opens File Explorer with that ZIP selected. It includes a readable `OptiScaler.log` from the known game locations. The exporter includes at most the latest 5 MB of each log and records a warning when it truncates or cannot read one. It never changes the source log. OptiScaler may keep growing its own live log: BannerlordFG does not truncate, rotate, or delete a file OptiScaler might be writing. Check its size and manage it manually only after the game and injector have exited.
+
+The first setup requires an internet connection and may request Windows administrator permission. This build pins the official **OptiScaler nightly-20261116** (SHA-256 verified) and extracts the 7z inside the maintenance DLL using SharpCompress, so the player's Windows `tar.exe` does not need LZMA support. **OptiScaler is downloaded separately; its binaries are not included in the mod ZIP.**
 
 ## 🎮 In-game controls
 
@@ -55,7 +57,21 @@ After OptiScaler is installed, you can set `LoadReshade=false` under `[Plugins]`
 
 This is a tested workaround, not a guarantee. It does **not** guarantee compatibility with every combination of graphics injectors, drivers, and game mods. A Bannerlord 1.4.8 / ReShade 6.8.0 Add-on configuration has still crashed with both `dxgi.dll` and `d3d11.dll` as the ReShade proxy.
 
-The separate `ReShade64.dll` + `LoadReshade=true` method has also failed to show the ReShade overlay in testing, so BannerlordFG does not automatically enable it. The `nightly-20261112` OptiScaler pin includes upstream changes to ReShade hook ordering, but this combination **has not yet been validated in-game**. BannerlordFG does not perform this workaround automatically.
+The separate `ReShade64.dll` + `LoadReshade=true` method has also failed to show the ReShade overlay in testing, so BannerlordFG does not automatically enable it. The `nightly-20261116` OptiScaler pin includes upstream changes to ReShade hook ordering, but this combination **has not yet been validated in-game**. BannerlordFG does not perform this workaround automatically.
+
+### BLSE compatibility (manual proxy workaround)
+
+BannerlordFG v1.1.3 recognizes `Bannerlord.BLSE.Launcher.exe`, `Bannerlord.BLSE.LauncherEx.exe`, and `Bannerlord.BLSE.Standalone.exe` for process safety and GPU detection. The native `Launcher.Native.exe` is also recognized when its full executable path matches this game's bin directory. A launcher name alone does not mean it is rendering the game: GPU activity is attributed to verified PIDs, and the in-game module's process identity is used to distinguish hosted gameplay from an idle launcher. **This does not mean OptiScaler's default `winmm.dll` proxy is guaranteed to load through BLSE.**
+
+If OptiScaler does not start with BLSE, an independently configured upstream OptiScaler **`dxgi.dll`** proxy can be used as a manual workaround. If ReShade is also installed, its `dxgi.dll` may need to use the `d3d11.dll` filename, only when that filename is free.
+
+**Tested configurations:** for the original launcher, OptiScaler uses `winmm.dll` with ReShade using `d3d11.dll`. For BLSE LauncherEx, the tested workaround uses an independently installed upstream OptiScaler `dxgi.dll` with ReShade `d3d11.dll`. These are observed setups, not a guarantee on every driver and game version.
+
+**Do not rename BannerlordFG-managed `winmm.dll` to `dxgi.dll`.** The managed installer records the proxy name and hash in its ownership manifest; renaming it would break managed installation checks and safe uninstall. Uninstall the managed OptiScaler installation normally first, then use the upstream manual OptiScaler procedure. BannerlordFG does not automatically adopt or uninstall externally installed OptiScaler files.
+
+### Hybrid GPU detection
+
+On systems with integrated and dedicated GPUs, the installer uses measured 3D GPU Engine activity for a validated game PID, mapped to the actual adapter through its DXGI LUID. When it can only measure a launcher on a multi-vendor system, it **will not guess** which GPU will render the game. Installation remains pending or reports an error instead of applying a potentially incorrect vendor configuration. A Windows test with the actual game renderer is required.
 
 ## ⚙️ How it works
 
@@ -142,7 +158,7 @@ ForceBorderless = true
 
 ### ⚡ 4. What happens when you click the buttons?
 
-**First-time Install:** BannerlordFG shows real download progress where available, downloads a pinned official OptiScaler release, verifies its **SHA-256** checksum, and **extracts and checks the files in temporary storage while Bannerlord is still open**. Only after those steps are complete does the game close and the helper copy the graphics files. The helper then tries to reopen the game with the selected mods. It will not open a second game if one is already running. Do not manually reopen Bannerlord during the closed-game installation step.
+**First-time Install:** BannerlordFG shows real download progress where available, downloads a pinned official OptiScaler release, verifies its **SHA-256** checksum, and **extracts and checks the files in temporary storage while Bannerlord is still open**. Only after those steps are complete does the game close and the helper copy the graphics files. The helper does not restart the game. Once the maintenance installation finishes, start Bannerlord yourself using your normal launcher. Do not manually reopen Bannerlord during the closed-game installation step.
 
 **Frame Generation / FPS Counter:** after XeFG and its controls have initialized, the menu can request changes live using internal **F23** (FG) and **F24** (FPS overlay) signals. You don't need to bind or press those keys yourself.
 
@@ -157,7 +173,7 @@ BannerlordFG keeps a manifest of the OptiScaler files it installs and checks the
 
 **Updating from v1.0.4:** a complete managed installation is never silently replaced. Uninstall the old OptiScaler from the in-game menu while using your previous BannerlordFG build, then install this updated build and install OptiScaler again. Do not manually delete unrecognized DLLs or the ownership manifest.
 
-**Updating from v1.1.1 to v1.1.2:** updating the BannerlordFG module alone does not replace an existing OptiScaler install. Uninstall the prior managed install through its in-game menu before switching versions. If the menu uninstaller stalls, close the game and follow `RECOVERY_GUIDE.txt` instead. Existing, hash-verified nightly-20261109 manifests remain recognized for safe uninstall/recovery; foreign ReShade DLLs remain untouched.
+**Updating from v1.1.1 or v1.1.2 to v1.1.3:** updating the BannerlordFG module alone does not replace an existing OptiScaler install. Uninstall the prior managed install through its in-game menu before switching versions. If the menu uninstaller stalls, close the game and follow `RECOVERY_GUIDE.txt` instead. Existing, hash-verified nightly-20261109 and nightly-20261112 manifests remain recognized for safe uninstall/recovery; foreign ReShade DLLs remain untouched.
 
 ## 🛠️ Troubleshooting and removal
 
@@ -183,7 +199,7 @@ When [reporting a bug](https://github.com/luizbizzio/BannerlordFG/issues), inclu
 
 Requires an installed copy of Bannerlord, **Visual Studio 2022 Build Tools / MSBuild**, and the **.NET Framework 4.7.2 targeting pack**. With the game closed, update the `GAME` path in [`BUILD_WINDOWS.cmd`](BUILD_WINDOWS.cmd) if needed and run it as administrator.
 
-The build restores the SharpCompress NuGet dependency (including runtime libraries), downloads Harmony when needed, compiles `BannerlordFG.dll` and `BannerlordFG.Maintenance.dll`, packages `BannerlordFG-v1.1.2.zip`, and deploys the build to the configured game directory. The Python source-contract tests **do not** replace a Windows build or an in-game test.
+The build restores the SharpCompress NuGet dependency (including runtime libraries), downloads Harmony when needed, compiles `BannerlordFG.dll` and `BannerlordFG.Maintenance.dll`, packages `BannerlordFG-v1.1.3.zip`, and deploys the build to the configured game directory. The Python source-contract tests **do not** replace a Windows build or an in-game test.
 
 ## ❤️ Credits and license
 

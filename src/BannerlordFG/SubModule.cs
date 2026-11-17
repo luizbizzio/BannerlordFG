@@ -9,11 +9,14 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
+using System.Web.Script.Serialization;
 using System.Threading;
+using System.Threading.Tasks;
 using TaleWorlds.Library;
 using TaleWorlds.Localization;
 using TaleWorlds.MountAndBlade;
 using BannerlordFG.Core;
+using BannerlordFG.Common;
 
 namespace BannerlordFG
 {
@@ -29,6 +32,7 @@ namespace BannerlordFG
         private string _gameBin;
         private string _helper;
         private int _pid;
+        private Mutex _gameHostMarker;
         // Keep the process handle until the first-run worker confirms startup
         // or exits. A PID alone can be reused before the watchdog polls.
         private Process _installCmdProcess;
@@ -56,6 +60,10 @@ namespace BannerlordFG
         // finish committing its manifest during the next manual launch.
         private bool _managedStateInitialized;
         private bool _cachedManagedInstall;
+        private bool _cachedManifestPresent;
+        private readonly BannerlordFG.Diagnostics.DiagnosticsExportWorkflow _diagnosticsExport =
+            new BannerlordFG.Diagnostics.DiagnosticsExportWorkflow(
+                BannerlordFG.Diagnostics.DiagnosticsExportService.ExportAndRevealAsync);
         private DateTime _nextManagedInstallProbeUtc;
         private float _managedInstallProbeElapsed;
         private string _cachedBinHash;
@@ -71,6 +79,11 @@ namespace BannerlordFG
                 RegisterExceptionDiagnostics();
                 _gameBin = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName);
                 _pid = Process.GetCurrentProcess().Id;
+                _gameHostMarker = GameHostMarker.Register(_gameBin, _pid);
+                // Capture engine state on the game thread, then collect the
+                // costly Windows and filesystem evidence in one background task.
+                BannerlordFG.Diagnostics.GameDiagnostics.Start(_gameBin, _pid,
+                    ReadActiveModuleIds());
                 _helper = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "BannerlordFG.Helper.cmd");
                 _controller = new FgController(_gameBin);
                 // Do not reset the native graphics until the maintenance worker
@@ -143,7 +156,9 @@ namespace BannerlordFG
                 if (File.Exists(Path.Combine(Path.GetDirectoryName(State(".disabled")), "native-ui-off.flag")))
                     Log("Native Performance UI disabled by diagnostic safe-mode flag.");
                 else NativePerformancePatch.Start(_controller, IsManagedGraphicsInstalled,
-                    BeginInstallFromOptions, BeginUninstall, PromptRestartForSetting, Log);
+                    HasIncompleteManagedInstall,
+                    BeginInstallFromOptions, BeginUninstall, BeginDiagnosticsExport,
+                    PromptRestartForSetting, Log);
                 // A deliberate uninstall is persistent. An existing third-party
                 // OptiScaler installation is never silently taken over.
                 // Upgrade recovery: v0.2.3 searched for ZIP although the release
@@ -169,6 +184,7 @@ namespace BannerlordFG
         {
             base.OnApplicationTick(dt);
             NativePerformancePatch.PumpPendingUi();
+            PollDiagnosticsExport();
             // A quick manual relaunch can overlap the final manifest commit.
             // Never pin an initial "not installed" snapshot for the whole session;
             // poll cheaply on the normal game tick, not in Harmony's UI hooks.
@@ -224,6 +240,21 @@ namespace BannerlordFG
             catch (Exception ex) { _guardFailed = true; Log("Graphics guard disabled: " + ex.Message); }
         }
 
+        protected override void OnSubModuleUnloaded()
+        {
+            try
+            {
+                try { BannerlordFG.Diagnostics.UnifiedLog.FlushPending(LogDirectory(),
+                    TimeSpan.FromMilliseconds(500)); } catch { }
+                if (_gameHostMarker != null) _gameHostMarker.Dispose();
+            }
+            finally
+            {
+                _gameHostMarker = null;
+                base.OnSubModuleUnloaded();
+            }
+        }
+
         protected override void OnGameStart(TaleWorlds.Core.Game game, TaleWorlds.Core.IGameStarter starter)
         {
             _enteredGameplay = true;
@@ -258,7 +289,13 @@ namespace BannerlordFG
             };
             AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
             {
-                try { Log("UNHANDLED managed exception: " + e.ExceptionObject); } catch { }
+                try { BannerlordFG.Diagnostics.UnifiedLog.Write(LogDirectory(), "ERROR", "GAME",
+                    "UNHANDLED managed exception: " + e.ExceptionObject); } catch { }
+            };
+            AppDomain.CurrentDomain.ProcessExit += (sender, e) =>
+            {
+                try { BannerlordFG.Diagnostics.UnifiedLog.FlushPending(LogDirectory(),
+                    TimeSpan.FromMilliseconds(500)); } catch { }
             };
         }
 
@@ -426,7 +463,7 @@ namespace BannerlordFG
             return null;
         }
 
-        private static List<string> ReadSelectedLauncherModules()
+        internal static List<string> ReadSelectedLauncherModules()
         {
             string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                 "Mount and Blade II Bannerlord", "Configs", "LauncherData.xml");
@@ -575,11 +612,7 @@ namespace BannerlordFG
                 {
                     string previous = File.ReadAllText(StateManifest());
                     if (previous.Contains("\"installedFiles\"") &&
-                        previous.Contains("\"archiveSha256\"") &&
-                        (!previous.Contains("\"stage\":\"complete\"") ||
-                         !previous.Contains("\"postinstallFiles\"") ||
-                         !File.Exists(Path.Combine(_gameBin, ProxyFromManifestText(previous))) ||
-                         !File.Exists(Path.Combine(_gameBin, "OptiScaler.ini"))))
+                        previous.Contains("\"archiveSha256\""))
                     {
                         Log("Incomplete manifest detected. Delegating read-only ownership preflight and post-exit recovery to the maintenance DLL.");
                         return null;
@@ -794,7 +827,9 @@ namespace BannerlordFG
 
         private void BeginInstallFromOptions()
         {
-            Log("OptiScaler Install clicked from native Performance menu.");
+            bool repair = HasIncompleteManagedInstall();
+            Log((repair ? "OptiScaler Repair" : "OptiScaler Install") +
+                " clicked from native Performance menu.");
             if (_requestedExit)
             {
                 ShowInstallFeedback("OptiScaler setup", "Bannerlord is already closing. Start the game again if installation does not complete.");
@@ -809,9 +844,11 @@ namespace BannerlordFG
                     // Once the player confirms, keep the progress popup open so
                     // there is no gameplay between consent and normal shutdown.
                     InformationManager.ShowInquiry(new InquiryData(
-                        "Install OptiScaler",
-                        "Save your campaign before continuing. Bannerlord will download OptiScaler, close after verification, and finish installing. You must open the game again yourself. Continue?",
-                        true, true, "Install and close", "Cancel",
+                        repair ? "Repair OptiScaler" : "Install OptiScaler",
+                        repair
+                            ? "Save your campaign before continuing. Bannerlord will verify the incomplete installation, download the pinned OptiScaler release, then close and repair managed files. Unknown files stay untouched. Reopen the game yourself. Continue?"
+                            : "Save your campaign before continuing. Bannerlord will download OptiScaler, close after verification, and finish installing. You must open the game again yourself. Continue?",
+                        true, true, repair ? "Repair and close" : "Install and close", "Cancel",
                         () => { _autoRestartInstallApproved = true; _beginApprovedInstallOnNextTick = true; },
                         () => { _autoRestartInstallApproved = false; Log("Player cancelled OptiScaler install and shutdown."); }),
                         false, true);
@@ -1200,15 +1237,31 @@ namespace BannerlordFG
                 if (!string.IsNullOrEmpty(_gameBin))
                 {
                     string manifest = StateManifest();
+                    _cachedManifestPresent = File.Exists(manifest);
                     string ini = Path.Combine(_gameBin, "OptiScaler.ini");
-                    if (File.Exists(manifest) && File.Exists(ini))
+                    if (_cachedManifestPresent && File.Exists(ini))
                     {
                         string text = File.ReadAllText(manifest);
                         string proxyPath = Path.Combine(_gameBin, ProxyFromManifestText(text));
+                        var parsed = new JavaScriptSerializer().DeserializeObject(text)
+                            as Dictionary<string, object>;
+                        object value;
+                        var tracked = parsed != null && parsed.TryGetValue("postinstallFiles", out value)
+                            ? value as Dictionary<string, object> : null;
+                        string root = Path.GetFullPath(_gameBin).TrimEnd(Path.DirectorySeparatorChar) +
+                            Path.DirectorySeparatorChar;
                         // An interrupted install is not a managed installation.
                         installed = File.Exists(proxyPath) &&
                             text.IndexOf("\"stage\":\"complete\"", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                            text.IndexOf("\"postinstallFiles\"", StringComparison.OrdinalIgnoreCase) >= 0;
+                            tracked != null && tracked.Count > 0 && tracked.Keys.All(relative =>
+                            {
+                                if (Path.IsPathRooted(relative) || relative.Contains("..") ||
+                                    relative.IndexOf(':') >= 0) return false;
+                                string path = Path.GetFullPath(Path.Combine(_gameBin, relative));
+                                return path.StartsWith(root, StringComparison.OrdinalIgnoreCase) &&
+                                    File.Exists(path) &&
+                                    (File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0;
+                            });
                     }
                 }
             }
@@ -1221,6 +1274,54 @@ namespace BannerlordFG
                 NativePerformancePatch.ScheduleManagedInstallRefresh();
             }
             return installed;
+        }
+
+        private bool HasIncompleteManagedInstall()
+        {
+            return _cachedManifestPresent && !_cachedManagedInstall;
+        }
+
+        private void BeginDiagnosticsExport()
+        {
+            try
+            {
+                if (!_diagnosticsExport.TryStart())
+                {
+                    InformationManager.DisplayMessage(new InformationMessage(
+                        "BannerlordFG: diagnostics export is running or was just started."));
+                    return;
+                }
+                InformationManager.DisplayMessage(new InformationMessage(
+                    "BannerlordFG: exporting diagnostics locally..."));
+            }
+            catch (Exception ex)
+            {
+                Log("Diagnostics export action failed: " + ex);
+                ShowInstallFeedback("Diagnostics export failed", ex.Message);
+            }
+        }
+
+        private void PollDiagnosticsExport()
+        {
+            if (!_diagnosticsExport.TryTakeCompleted(out var result)) return;
+            try
+            {
+                if (result.Success)
+                    ShowInstallFeedback("Diagnostics exported",
+                        "Saved " + Path.GetFileName(result.ZipPath) +
+                        (result.ExplorerOpened
+                            ? ". Explorer opened with this ZIP selected."
+                            : ". Explorer could not open (" + result.ExplorerError +
+                              "). ZIP saved at " + result.ZipPath + ".") +
+                        (result.Warnings.Length > 0 ? " " + result.Warnings.Length +
+                            " warning(s) were recorded in the ZIP." : ""));
+                else ShowInstallFeedback("Diagnostics export failed", result.Error ?? "Unknown error.");
+            }
+            catch (Exception ex)
+            {
+                Log("Diagnostics export failed: " + ex);
+                ShowInstallFeedback("Diagnostics export failed", ex.Message);
+            }
         }
 
         private string StateManifest()
@@ -1253,10 +1354,20 @@ namespace BannerlordFG
         {
             try
             {
-                string directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BannerlordFG");
-                BannerlordFG.Diagnostics.UnifiedLog.Write(directory, "GAME", message);
+                string directory = LogDirectory();
+                if (message != null && (message.StartsWith("FG native UI ", StringComparison.Ordinal) ||
+                    message.IndexOf("exception", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    message.IndexOf(" failed", StringComparison.OrdinalIgnoreCase) >= 0))
+                    BannerlordFG.Diagnostics.UnifiedLog.QueueWrite(directory, "ERROR", "GAME", message);
+                else BannerlordFG.Diagnostics.UnifiedLog.QueueWrite(directory, "INFO", "GAME", message);
             }
             catch { }
+        }
+
+        private static string LogDirectory()
+        {
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "BannerlordFG");
         }
     }
 }

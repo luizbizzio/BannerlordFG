@@ -14,7 +14,7 @@ class FirstRunChecks(unittest.TestCase):
     def test_launcher_uses_bannerlordfg_name(self):
         xml = ET.parse(ROOT / 'Module/BannerlordFG/SubModule.xml').getroot()
         self.assertEqual(xml.find('Name').attrib['value'], 'BannerlordFG')
-        self.assertEqual(xml.find('Version').attrib['value'], 'v1.1.2')
+        self.assertEqual(xml.find('Version').attrib['value'], 'v1.1.3')
         self.assertTrue(xml.find('SubModules/SubModule/DLLName').attrib['value'] == 'BannerlordFG.dll')
 
     def test_first_run_only_on_clean_install(self):
@@ -34,7 +34,7 @@ class FirstRunChecks(unittest.TestCase):
         self.assertNotIn('taskkill', SUB.lower())
         self.assertNotIn('Process.GetCurrentProcess().Kill(', SUB)
         self.assertNotIn('Environment.Exit(', SUB)
-        self.assertIn('while ((ProcessAlive(waitPid) || OptiInstaller.BannerlordIsRunning())', AUTO)
+        self.assertIn('while ((OriginalPidStillUsingGraphics(waitPid, gameBin) || OptiInstaller.BannerlordIsRunning(gameBin))', AUTO)
         self.assertIn('throw new TimeoutException', AUTO)
 
     def test_download_verification_precedes_exit(self):
@@ -50,7 +50,7 @@ class FirstRunChecks(unittest.TestCase):
         uninst = AUTO.split('internal static void RunUninstall(', 1)[1].split('internal static void Run(', 1)[0]
         self.assertIn('OptiInstaller.Uninstall(gameBin, Log)', uninst)
         self.assertIn('while ((OriginalPidStillUsingGraphics(waitPid, gameBin)', uninst)
-        self.assertIn('if (!ProcessAlive(waitPid)) return false;', AUTO)
+        self.assertIn('return OptiInstaller.IsGameProcessBusy(waitPid, gameBin);', AUTO)
         self.assertNotIn('RelaunchDirect(', uninst)
         self.assertIn('StatePath(gameBin, ".disabled")', uninst)
         self.assertIn('if (explicitlyRequested) try { File.Delete(State(".disabled")); }', SUB)
@@ -67,7 +67,7 @@ class FirstRunChecks(unittest.TestCase):
 
     def test_gpu_detection_and_foreign_file_safety(self):
         self.assertIn('GpuDetection.TryDetectActiveGpu(gameBin, waitPid, Log)', AUTO)
-        self.assertIn('GpuDetection.DetectByVendorPriority(Log)', AUTO)
+        self.assertIn('GpuDetection.DetectOnlyUnambiguousVendor(Log)', AUTO)
         self.assertIn('Win32_VideoController', GPU)
         self.assertNotIn('Mixed NVIDIA/AMD adapters', GPU)
         self.assertIn('ExistingInstallStatus(gameBin)', AUTO)

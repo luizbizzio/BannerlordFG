@@ -1,4 +1,4 @@
-"""Static regression checks for v1.1.2 live UI; not a substitute for a Windows game run."""
+"""Static regression checks for v1.1.3 live UI; not a substitute for a Windows game run."""
 from pathlib import Path
 from xml.etree import ElementTree
 ROOT=Path(__file__).resolve().parents[1]
@@ -19,11 +19,10 @@ def test_only_frame_generation_title_and_no_upscaling_required_button():
     assert 'ExplainUpscaling' not in UI
     assert 'Frame Generation requires DLSS or FSR upscaling' in UI
 
-def test_multiplier_is_fixed_silent_action():
-    body=UI.split('private void ExplainMultiplier()',1)[1].split('private void RefreshUpscalingLocks()',1)[0]
-    assert 'InformationManager' not in body and 'DisplayMessage' not in body
-    assert 'TrySetMultiplier' not in body
-    assert '"{=BFGMultiplier}Multiplier", "2x"' in UI
+def test_multiplier_is_fixed_without_action():
+    assert 'Fixed at 2x.' in UI
+    assert 'IdMultiplier' not in UI
+    assert 'ExplainMultiplier' not in UI
 
 def test_live_control_toggle_requires_initialized_backend():
     assert 'CanToggleLive => _liveBackendReadyAtLaunch && _liveKeysReadyAtLaunch' in CTL
@@ -57,5 +56,5 @@ def test_existing_installs_migrated_with_ownership_check():
     assert 'File.Copy(ini, backup, false);' in INSTALLER
 
 def test_release_stays_100():
-    assert ElementTree.parse(ROOT/'Module/BannerlordFG/SubModule.xml').getroot().find('Version').attrib['value']=='v1.1.2'
-    assert 'BannerlordFG-v1.1.2.zip' in load('BUILD_WINDOWS.cmd')
+    assert ElementTree.parse(ROOT/'Module/BannerlordFG/SubModule.xml').getroot().find('Version').attrib['value']=='v1.1.3'
+    assert 'BannerlordFG-v1.1.3.zip' in load('BUILD_WINDOWS.cmd')

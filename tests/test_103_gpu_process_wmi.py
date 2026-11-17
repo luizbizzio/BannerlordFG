@@ -28,7 +28,7 @@ def test_process_wmi_fallback_uses_specific_pid_and_executable_path():
 
 
 def test_does_not_bypass_executable_validation():
-    block = CODE.split('private static bool IsExpectedGameProcess(', 1)[1].split(
+    block = CODE.split('internal static bool IsExpectedGameProcess(', 1)[1].split(
         'private static HashSet<int> FindGameProcessIds(', 1)[0]
     assert 'SameExecutablePath(wmiPath, expected)' in block
     assert 'return true;' in block

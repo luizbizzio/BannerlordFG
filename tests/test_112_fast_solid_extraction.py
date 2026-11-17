@@ -1,4 +1,4 @@
-"""Regressions: safe sequential LZMA2 7z extraction in BannerlordFG v1.1.2."""
+"""Regressions: safe sequential LZMA2 7z extraction in BannerlordFG v1.1.3."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,7 +26,7 @@ def test_sequential_reader_keeps_archive_safety_checks():
 
 
 def test_retain_verified_package_and_measure_extract_and_hashing():
-    assert 'nightly-20261112' in INSTALL
+    assert 'nightly-20261116' in INSTALL
     assert 'PinnedSha256' in INSTALL
     assert 'Sequential 7z extraction finished in ' in INSTALL
     assert 'Extracted file hashing and verification finished in ' in INSTALL

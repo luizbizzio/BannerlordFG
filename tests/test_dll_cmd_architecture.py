@@ -38,7 +38,7 @@ def test_install_safety_reused_without_shell_reimplementation():
     inst=(R/'src/BannerlordFG.Setup/OptiInstaller.cs').read_text()
     assert 'OptiInstaller.PrepareOfficialPackageAsync(' in auto
     assert 'package.Verify();' in auto
-    assert 'while ((ProcessAlive(waitPid) || OptiInstaller.BannerlordIsRunning())' in auto
+    assert 'while ((OriginalPidStillUsingGraphics(waitPid, gameBin) || OptiInstaller.BannerlordIsRunning(gameBin))' in auto
     assert 'PinnedSha256' in inst and 'HashFile' in inst
     assert 'OptiInstaller.Uninstall(gameBin, Log)' in auto
     assert '--post-exit-uninstall' in ENTRY and '--auto-first-run' in ENTRY
@@ -48,12 +48,12 @@ def test_package_requires_cmd_and_dll_without_shipping_setup_exe():
     assert 'BannerlordFG.Helper.cmd' in BUILD
     assert 'BannerlordFG.Setup.exe' not in (MOD/'bin/Win64_Shipping_Client').as_posix() # template has none
     assert list(MOD.rglob('*.exe')) == []
-    assert 'BannerlordFG-v1.1.2.zip' in BUILD
-    assert ET.parse(MOD/'SubModule.xml').getroot().find('Version').get('value') == 'v1.1.2'
+    assert 'BannerlordFG-v1.1.3.zip' in BUILD
+    assert ET.parse(MOD/'SubModule.xml').getroot().find('Version').get('value') == 'v1.1.3'
 
 def test_launcher_does_not_block_graphics_maintenance():
     root = Path(__file__).resolve().parents[1]
     installer = (root / 'src' / 'BannerlordFG.Setup' / 'OptiInstaller.cs').read_text(encoding='utf-8')
-    assert 'name.Equals("Bannerlord", StringComparison.OrdinalIgnoreCase)' in installer
-    assert 'name.Equals("Bannerlord.Native", StringComparison.OrdinalIgnoreCase)' in installer
+    assert 'foreach (string name in GpuDetection.GameProcessNames)' in installer
+    assert 'GpuDetection.IsExpectedGameProcess(process, gameBin' in installer
     assert 'name.StartsWith("TaleWorlds.MountAndBlade", StringComparison.OrdinalIgnoreCase)' not in installer

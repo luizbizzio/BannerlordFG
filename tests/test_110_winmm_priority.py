@@ -1,4 +1,4 @@
-"""v1.1.2 contracts for the WinMM-first, DXGI-fallback safe installer.
+"""v1.1.3 contracts for the WinMM-first, DXGI-fallback safe installer.
 Not a substitute for compiling or testing OptiScaler in Bannerlord.
 """
 from pathlib import Path
@@ -32,10 +32,9 @@ def test_existing_injector_status_allows_either_single_foreign_proxy():
 
 def test_uninstall_only_deletes_manifest_owned_proxy():
     code = function('internal static void Uninstall(', 'internal static async Task InstallAsync(')
-    assert 'ManifestProxyName(m)' in code
-    assert 'checksums[managedProxy]' in code
-    assert 'HashFile(target).Equals(kv.Value' in code
-    assert 'skipped.Add(kv.Key' in code
+    assert 'VerifiedRemovalPlan(gameBin, manifestPath)' in code
+    assert 'ManifestProxyName(ParseJsonObject(File.ReadAllText(manifestPath)))' in code
+    assert 'DeleteVerifiedFile(item.Path, item.Sha256)' in code
     assert 'File.Delete(Path.Combine(gameBin, "dxgi.dll"))' not in code
 
 
@@ -47,9 +46,9 @@ def test_runtime_installer_gate_allows_foreign_winmm_and_foreign_dxgi():
 
 
 def test_metadata_and_recovery_agree_with_110():
-    assert ET.parse(ROOT/'Module/BannerlordFG/SubModule.xml').getroot().find('Version').get('value') == 'v1.1.2'
-    assert 'BannerlordFG-v1.1.2.zip' in (ROOT/'BUILD_WINDOWS.cmd').read_text()
-    assert 'version-1.1.2-blue' in README
+    assert ET.parse(ROOT/'Module/BannerlordFG/SubModule.xml').getroot().find('Version').get('value') == 'v1.1.3'
+    assert 'BannerlordFG-v1.1.3.zip' in (ROOT/'BUILD_WINDOWS.cmd').read_text()
+    assert 'version-1.1.3-blue' in README
     assert 'prefers `winmm.dll` by default' in README
     assert 'Existing dxgi.dll preserved' in RECOVER
     assert 'Existing winmm.dll preserved' in RECOVER

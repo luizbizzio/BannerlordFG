@@ -36,7 +36,10 @@ namespace BannerlordFG.Setup
 
         internal static void Log(string message)
         {
-            BannerlordFG.Diagnostics.UnifiedLog.Write(Folder, "SETUP", message);
+            if (message != null && (message.IndexOf(" failed", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                message.IndexOf("exception", StringComparison.OrdinalIgnoreCase) >= 0))
+                BannerlordFG.Diagnostics.UnifiedLog.Write(Folder, "ERROR", "SETUP", message);
+            else BannerlordFG.Diagnostics.UnifiedLog.Write(Folder, "SETUP", message);
         }
 
         // One small per-game status marker shared with the game process. The
@@ -69,13 +72,12 @@ namespace BannerlordFG.Setup
             }
         }
 
-        // First identify Bannerlord.exe's active 3D rendering adapter by PID +
-        // DXGI LUID. If Windows does not expose reliable GPU Engine activity,
-        // use a deterministic, no-prompt NVIDIA > AMD > Intel hardware fallback.
+        // Only accept a verified 3D renderer PID/DXGI LUID, or a machine with
+        // exactly one GPU vendor. Never choose the strongest adapter by brand.
         private static string DetectGpu(string gameBin, int waitPid)
         {
             string active = GpuDetection.TryDetectActiveGpu(gameBin, waitPid, Log);
-            return active ?? GpuDetection.DetectByVendorPriority(Log);
+            return active ?? GpuDetection.DetectOnlyUnambiguousVendor(Log);
         }
 
         private static bool ProcessAlive(int pid)
@@ -86,34 +88,12 @@ namespace BannerlordFG.Setup
             catch (InvalidOperationException) { return false; }
         }
 
-        // The original game-host PID can belong to TaleWorlds' launcher. A
-        // launcher that survives QuitGame is not a blocker once it no longer
-        // has our OWN managed proxy loaded. An external DXGI (such as ReShade)
-        // must never be mistaken for BannerlordFG's winmm.dll proxy.
+        // A launcher may remain open after its hosted game has shut down.
+        // Delegate to the same verified-PID, live-marker and managed-DLL guard
+        // used by installation/uninstallation. PID existence alone is not busy.
         private static bool OriginalPidStillUsingGraphics(int waitPid, string gameBin)
         {
-            if (!ProcessAlive(waitPid)) return false;
-            try
-            {
-                using (var p = Process.GetProcessById(waitPid))
-                {
-                    if (!p.ProcessName.Equals("TaleWorlds.MountAndBlade.Launcher",
-                        StringComparison.OrdinalIgnoreCase)) return true;
-                    string managedName = OptiInstaller.GetManagedProxyName(gameBin);
-                    if (managedName == null) return true; // Cannot prove no owned DLL is loaded.
-                    string proxy = Path.GetFullPath(Path.Combine(gameBin, managedName));
-                    foreach (ProcessModule module in p.Modules)
-                    {
-                        if (string.Equals(Path.GetFullPath(module.FileName), proxy,
-                            StringComparison.OrdinalIgnoreCase)) return true;
-                    }
-                    // Still-running Bannerlord.exe is checked separately.
-                    return false;
-                }
-            }
-            catch (ArgumentException) { return false; } // PID already exited.
-            catch (InvalidOperationException) { return false; } // PID already exited.
-            catch { return true; } // Cannot prove proxy unloaded; do not delete.
+            return OptiInstaller.IsGameProcessBusy(waitPid, gameBin);
         }
 
         internal static bool InstallIfNeeded(string gameBin)
@@ -167,11 +147,11 @@ namespace BannerlordFG.Setup
             try
             {
                 if (waitPid <= 0) throw new InvalidOperationException("Missing original game PID.");
-                OptiInstaller.ValidateGameBin(requestedGameBin);
+                string gameBin = OptiInstaller.ValidateGameBin(requestedGameBin);
                 DateTime deadline = DateTime.UtcNow.AddMinutes(15);
-                while ((ProcessAlive(waitPid) || OptiInstaller.BannerlordIsRunning()) &&
+                while ((OriginalPidStillUsingGraphics(waitPid, gameBin) || OptiInstaller.BannerlordIsRunning(gameBin)) &&
                     DateTime.UtcNow < deadline) Thread.Sleep(1000);
-                if (ProcessAlive(waitPid) || OptiInstaller.BannerlordIsRunning())
+                if (OriginalPidStillUsingGraphics(waitPid, gameBin) || OptiInstaller.BannerlordIsRunning(gameBin))
                 { Log("Settings cleanup deferred: Bannerlord did not shut down normally."); return; }
                 FpsCounterCleanup.ApplyRequestedAfterExit(Log);
                 NativeLimiterCleanup.ApplyRequestedAfterExit(Log);
@@ -185,15 +165,17 @@ namespace BannerlordFG.Setup
             try
             {
                 string gameBin = OptiInstaller.ValidateGameBin(requestedGameBin);
-                if (OptiInstaller.BannerlordIsRunning())
+                if (OptiInstaller.BannerlordIsRunning(gameBin))
                     throw new InvalidOperationException("Close Bannerlord normally before uninstalling.");
-                File.WriteAllText(StatePath(gameBin, ".disabled"), DateTime.UtcNow.ToString("o"));
-                try { File.Delete(StatePath(gameBin, ".enable-next-launch")); } catch { }
                 OptiInstaller.Uninstall(gameBin, Log);
-                FpsCounterCleanup.RestoreAfterUninstall(Log);
-                NativeLimiterCleanup.RestoreAfterUninstall(Log);
                 if (OptiInstaller.HasManagedInstall(gameBin))
                     throw new IOException("Recovery is incomplete: manifest retained for modified/foreign assets. See BannerlordFG.log.");
+                try { FpsCounterCleanup.RestoreAfterUninstall(Log); }
+                catch (Exception ex) { Log("Native FPS cleanup deferred: " + ex.Message); }
+                try { NativeLimiterCleanup.RestoreAfterUninstall(Log); }
+                catch (Exception ex) { Log("Legacy limiter cleanup deferred: " + ex.Message); }
+                File.WriteAllText(StatePath(gameBin, ".disabled"), DateTime.UtcNow.ToString("o"));
+                try { File.Delete(StatePath(gameBin, ".enable-next-launch")); } catch { }
                 Log("Manual recovery uninstall completed without starting Bannerlord.");
             }
             catch (Exception ex) { Log("Manual uninstall failed: " + ex); throw; }
@@ -224,18 +206,18 @@ namespace BannerlordFG.Setup
                 DateTime deadline = DateTime.UtcNow.AddMinutes(3);
                 DateTime nextProgressLog = DateTime.UtcNow.AddSeconds(10);
                 while ((OriginalPidStillUsingGraphics(waitPid, gameBin) ||
-                    OptiInstaller.BannerlordIsRunning()) && DateTime.UtcNow < deadline)
+                    OptiInstaller.BannerlordIsRunning(gameBin)) && DateTime.UtcNow < deadline)
                 {
                     if (DateTime.UtcNow >= nextProgressLog)
                     {
                         Log("Uninstall waiting for Bannerlord shutdown: original PID " + waitPid +
                             " still using game graphics=" + OriginalPidStillUsingGraphics(waitPid, gameBin) +
-                            ", other game process active=" + OptiInstaller.BannerlordIsRunning() + ".");
+                            ", other game process active=" + OptiInstaller.BannerlordIsRunning(gameBin) + ".");
                         nextProgressLog = DateTime.UtcNow.AddSeconds(10);
                     }
                     Thread.Sleep(1000);
                 }
-                if (OriginalPidStillUsingGraphics(waitPid, gameBin) || OptiInstaller.BannerlordIsRunning())
+                if (OriginalPidStillUsingGraphics(waitPid, gameBin) || OptiInstaller.BannerlordIsRunning(gameBin))
                     throw new TimeoutException("Game did not fully exit within three minutes (original PID " +
                         waitPid + "). If the launcher still hosts the game, close it too. " +
                         "No loaded graphics DLLs have been modified.");
@@ -330,7 +312,7 @@ namespace BannerlordFG.Setup
                         WriteAtomic(StatePath(gameBin, ".blocked"), existing);
                     return;
                 }
-                Log("Detecting Bannerlord renderer first; falling back to NVIDIA > AMD > Intel when necessary...");
+                Log("Detecting Bannerlord renderer first; using single-vendor fallback only if the render probe is inconclusive...");
                 string gpu = DetectGpu(gameBin, waitPid);
                 Log("GPU automatically detected: " + gpu);
                 PublishProgress(gameBin, "preparing", -1, 0, 0);
@@ -339,6 +321,11 @@ namespace BannerlordFG.Setup
                         PublishProgress(gameBin, stage, percent, received, total)))
                     .GetAwaiter().GetResult();
                 package.Verify();
+                if (!recoverInterrupted)
+                {
+                    OptiInstaller.CheckRuntimeCollisions(gameBin, package);
+                    Log("Runtime payload collision preflight passed; non-runtime setup scripts and licenses are ignored.");
+                }
                 if (File.Exists(StatePath(gameBin, ".disabled")))
                 {
                     Log("Setup cancelled during download. No graphics files changed.");
@@ -349,9 +336,9 @@ namespace BannerlordFG.Setup
                 Log("Pinned official 7z ready. Awaiting safe initial-menu shutdown, or normal game exit.");
 
                 DateTime deadline = DateTime.UtcNow.AddHours(4);
-                while ((ProcessAlive(waitPid) || OptiInstaller.BannerlordIsRunning()) && DateTime.UtcNow < deadline)
+                while ((OriginalPidStillUsingGraphics(waitPid, gameBin) || OptiInstaller.BannerlordIsRunning(gameBin)) && DateTime.UtcNow < deadline)
                     Thread.Sleep(1500);
-                if (ProcessAlive(waitPid) || OptiInstaller.BannerlordIsRunning())
+                if (OriginalPidStillUsingGraphics(waitPid, gameBin) || OptiInstaller.BannerlordIsRunning(gameBin))
                     throw new TimeoutException("Game still running; installation postponed rather than modifying loaded DLLs.");
 
                 // If the user disabled FG while the helper was downloading, never

@@ -30,8 +30,8 @@ def test_one_persistent_mod_log_and_short_lived_host_buffer():
     assert 'internal const string FileName = "BannerlordFG.log"' in LOGGER
     assert 'FileMode.OpenOrCreate' in LOGGER
     assert 'FileShare.Read' in LOGGER
-    assert 'Thread.Sleep(25)' in LOGGER
-    assert 'UnifiedLog.Write(directory, "GAME", message)' in SUB
+    assert 'UnifiedLog.QueueWrite(directory, "ERROR", "GAME", message)' in SUB
+    assert 'UnifiedLog.QueueWrite(directory, "INFO", "GAME", message)' in SUB
     assert 'UnifiedLog.Write(Folder, "SETUP", message)' in AUTO
     assert '> "%BFG_HOST_OUTPUT%" 2>&1' in CMD
     assert 'del /q "%BFG_HOST_OUTPUT%"' in CMD
@@ -42,6 +42,6 @@ def test_one_persistent_mod_log_and_short_lived_host_buffer():
 
 def test_version_and_nightly_not_changed():
     opt=(R/'src/BannerlordFG.Setup/OptiInstaller.cs').read_text()
-    assert 'internal const string Tag = "nightly-20261112"' in opt
-    assert 'c32932ca340ffd605325101077b072209514ed0f110dc8b7ab92486eec1a5d93' in opt
-    assert 'v1.1.2' in (R/'Module/BannerlordFG/SubModule.xml').read_text()
+    assert 'internal const string Tag = "nightly-20261116"' in opt
+    assert '6cd5704b47ff883666df7fec80ce55d113ecc1097a1db5caa3a1058bc007c2d0' in opt
+    assert 'v1.1.3' in (R/'Module/BannerlordFG/SubModule.xml').read_text()

@@ -11,7 +11,8 @@ class InstallState0313(unittest.TestCase):
         self.assertIn('stage', S)
         self.assertIn('complete', S)
         self.assertIn('postinstallFiles', S)
-        self.assertIn('if (!installed)', N)
+        self.assertIn('NativeMenuLayout.Rows(installed, _needsRepair())', N)
+        self.assertIn('case NativeMenuRow.Uninstall:', N)
         self.assertIn('{=BFGInstall}Install', N)
         self.assertIn('{=BFGUninstall}Uninstall', N)
     def test_unlimited_ui_removed(self):

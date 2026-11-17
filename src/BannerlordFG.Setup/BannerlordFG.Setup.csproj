@@ -23,6 +23,8 @@
     <Reference Include="System.Management" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="..\Common\UnifiedLog.cs" />
+    <Compile Include="..\Common\GameHostMarker.cs" />
+    <Compile Include="..\Common\RendererDecision.cs" />
     <Compile Include="MaintenanceEntry.cs" />
     <Compile Include="OptiInstaller.cs" />
     <Compile Include="SafeSevenZipExtractor.cs" />

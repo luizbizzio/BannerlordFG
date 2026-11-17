@@ -10,13 +10,15 @@ L=(R/'src/BannerlordFG/Core/NativeUpscalingLock.cs').read_text()
 U=(R/'src/BannerlordFG/Core/NativeUnlimitedLimiter.cs').read_text()
 
 class Controls(unittest.TestCase):
-    def test_no_custom_base_limit_and_five_installed_rows(self):
+    def test_no_custom_base_limit_and_four_installed_rows(self):
         self.assertIn('new FgEnabledData(_controller, _isInstalled',N)
         self.assertNotIn('rows.Add(CreateChoice(vm, new FgMultiplierData',N)
-        self.assertIn('rows.Add(CreateAction(vm, IdMultiplier, ExplainMultiplier',N)
+        self.assertNotIn('IdMultiplier',N)
         self.assertIn('rows.Add(CreateChoice(vm, new FgShowFpsData',N)
+        self.assertIn('"{=BFGShowFps}FPS Counter"',N)
         self.assertNotIn('rows.Add(CreateChoice(vm, new FgUnlimitedData',N)
         self.assertIn('rows.Add(CreateAction(vm, IdUninstall',N)
+        self.assertIn('rows.Add(CreateAction(vm, IdExport',N)
         self.assertNotIn('Base FPS Limit', N)
         self.assertNotIn('FgBaseLimitData', N+D)
         self.assertNotIn('TrySetBaseFps', C)

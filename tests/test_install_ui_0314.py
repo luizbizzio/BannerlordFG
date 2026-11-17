@@ -13,16 +13,19 @@ CAP = (ROOT / 'src/BannerlordFG/Core/NativeMenuContract.cs').read_text()
 
 
 def test_post_fg_counter_is_not_constructed_without_managed_install():
-    assert re.search(r'if \(installed\)\s*\{\s*try\s*\{\s*rows\.Add\(CreateChoice\(vm, new FgShowFpsData', UI)
-    assert UI.index('if (installed)', UI.index('private void PopulateVisualRows')) < UI.index('new FgShowFpsData')
-    assert UI.index('new FgShowFpsData') < UI.index('if (!installed)')
+    layout = (ROOT / 'src/BannerlordFG/Core/NativeMenuLayout.cs').read_text()
+    assert 'if (installed)' in layout
+    assert 'rows.Add(NativeMenuRow.FpsCounter)' in layout
+    assert 'case NativeMenuRow.FpsCounter:' in UI
+    assert 'new FgShowFpsData' in UI
     assert '{=BFGOptiScaler}OptiScaler' in UI
     assert 'Graphics Component' not in UI
 
 
 def test_opt_in_install_has_callback_diagnostics_and_no_silent_gameplay_guard():
     fn = MOD.split('private void BeginInstallFromOptions()', 1)[1].split('private void PromptRestartForSetting()', 1)[0]
-    assert 'OptiScaler Install clicked' in fn
+    assert '"OptiScaler Install"' in fn and '"OptiScaler Repair"' in fn
+    assert '"Repair and close"' in fn
     assert 'BeginInstall(true)' in fn
     assert '_enteredGameplay || _requestedExit' not in fn
     assert '_setupPending' not in MOD

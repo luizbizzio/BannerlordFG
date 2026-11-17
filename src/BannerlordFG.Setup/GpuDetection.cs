@@ -9,6 +9,7 @@ using System.Management;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading;
+using BannerlordFG.Common;
 
 namespace BannerlordFG.Setup
 {
@@ -18,8 +19,8 @@ namespace BannerlordFG.Setup
     // zero even when GPU Engine PDH reports high use); DXGI resolves the LUID.
     // This is independent of the
     // often incorrect adapter names shown in Bannerlord's video settings.
-    // If the counters are absent, idle or ambiguous, do not guess: let the
-    // explicit NVIDIA > AMD > Intel fallback run instead.
+    // If readings are missing/ambiguous, use only the single-vendor fallback.
+    // Never substitute a vendor ranking for renderer evidence.
     internal static class GpuDetection
     {
         private const uint NvidiaVendorId = 0x10DE;
@@ -121,10 +122,14 @@ namespace BannerlordFG.Setup
         private static extern int CreateDXGIFactory1(ref Guid riid,
             [MarshalAs(UnmanagedType.Interface)] out IDXGIFactory1 factory);
 
-        private sealed class Adapter
+        internal sealed class Adapter
         {
-            public string Vendor;
-            public string Description;
+            internal string Vendor;
+            internal string Description;
+            internal uint VendorId;
+            internal uint DeviceId;
+            internal ulong DedicatedBytes;
+            internal ulong Luid;
         }
 
         private static string VendorOf(uint id)
@@ -135,7 +140,7 @@ namespace BannerlordFG.Setup
             return null;
         }
 
-        private static Dictionary<ulong, Adapter> EnumerateDxgiAdapters()
+        internal static Dictionary<ulong, Adapter> EnumerateDxgiAdapters()
         {
             var adapters = new Dictionary<ulong, Adapter>();
             IDXGIFactory1 factory = null;
@@ -159,9 +164,13 @@ namespace BannerlordFG.Setup
                         string vendor = VendorOf(desc.VendorId);
                         ulong luid = ((ulong)(uint)desc.AdapterLuid.HighPart << 32) |
                                      desc.AdapterLuid.LowPart;
-                        // Never attribute a zero/unknown LUID or software adapter.
-                        if (vendor != null && luid != 0)
-                            adapters[luid] = new Adapter { Vendor = vendor, Description = desc.Description };
+                        // Include every hardware vendor for inventory; software
+                        // adapters and zero LUIDs cannot identify a renderer.
+                        if (luid != 0 && (desc.Flags & 2) == 0)
+                            adapters[luid] = new Adapter { Vendor = vendor ?? "unknown",
+                                Description = desc.Description, VendorId = desc.VendorId,
+                                DeviceId = desc.DeviceId,
+                                DedicatedBytes = desc.DedicatedVideoMemory.ToUInt64(), Luid = luid };
                     }
                     finally
                     {
@@ -179,24 +188,37 @@ namespace BannerlordFG.Setup
         // The Bannerlord C# module can execute in TaleWorlds.MountAndBlade.Launcher.exe:
         // SubModule.CaptureCurrentLaunch explicitly documents this. An elevated
         // installer receives that host PID, NOT necessarily a Bannerlord.exe PID.
-        // Only these three exact, same-directory executables can contribute
-        // GPU Engine samples. A matching process name alone is never trusted.
-        private static string ExpectedExecutableName(string processName)
+        // Only exact, same-directory vanilla or BLSE executables may contribute
+        // GPU Engine samples. A matching process name is not authentication.
+        internal static readonly string[] GameProcessNames = {
+            "Bannerlord", "Bannerlord.Native", "TaleWorlds.MountAndBlade.Launcher",
+            "Bannerlord.BLSE.Launcher", "Bannerlord.BLSE.LauncherEx",
+            "Bannerlord.BLSE.Standalone", "Launcher.Native"
+        };
+
+        internal static string ExpectedExecutableName(string processName)
         {
-            if (string.Equals(processName, "Bannerlord", StringComparison.OrdinalIgnoreCase))
-                return "Bannerlord.exe";
-            if (string.Equals(processName, "Bannerlord.Native", StringComparison.OrdinalIgnoreCase))
-                return "Bannerlord.Native.exe";
-            if (string.Equals(processName, "TaleWorlds.MountAndBlade.Launcher", StringComparison.OrdinalIgnoreCase))
-                return "TaleWorlds.MountAndBlade.Launcher.exe";
+            foreach (string name in GameProcessNames)
+                if (string.Equals(processName, name, StringComparison.OrdinalIgnoreCase))
+                    return name + ".exe";
             return null;
+        }
+
+        // A native game EXE is strong evidence of the renderer. Vanilla/BLSE
+        // launchers (including Launcher.Native) can ALSO host the game, but only
+        // the live in-game caller or a live module marker proves that state.
+        internal static bool IsDirectGameProcess(string name)
+        {
+            return string.Equals(name, "Bannerlord", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(name, "Bannerlord.Native", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(name, "Bannerlord.BLSE.Standalone", StringComparison.OrdinalIgnoreCase);
         }
 
         // Prefer MainModule; under some Windows/driver/UAC combinations its path
         // is unavailable while Win32_Process.ExecutablePath is accessible.
         // Both sources must resolve to the exact executable in the validated
         // game binary directory. Never accept a PID solely by its name.
-        private static bool IsExpectedGameProcess(Process process, string gameBin,
+        internal static bool IsExpectedGameProcess(Process process, string gameBin,
             Action<string> log)
         {
             int pid;
@@ -217,6 +239,9 @@ namespace BannerlordFG.Setup
             {
                 mainPath = process.MainModule.FileName;
                 if (SameExecutablePath(mainPath, expected)) return true;
+                // MainModule provided a definitive path, not a permission error.
+                // Never let a later WMI query contradict this path (PID reuse).
+                if (!string.IsNullOrEmpty(mainPath)) return false;
             }
             catch (System.ComponentModel.Win32Exception ex)
             {
@@ -308,8 +333,7 @@ namespace BannerlordFG.Setup
             // It is possible to have a separate renderer process. Collect all
             // validated game-host processes, not just the caller, and compare
             // their PDH usage before selecting a GPU.
-            foreach (string name in new[] {
-                "Bannerlord", "Bannerlord.Native", "TaleWorlds.MountAndBlade.Launcher" })
+            foreach (string name in GameProcessNames)
             {
                 foreach (Process p in Process.GetProcessesByName(name))
                 {
@@ -331,10 +355,17 @@ namespace BannerlordFG.Setup
         // confuse phys_N with an NVIDIA/AMD/Intel brand or GPU index.
         internal static bool TryParseEngine(string name, HashSet<int> gamePids, out ulong luid)
         {
+            int pid;
+            return TryParseEngine(name, gamePids, out pid, out luid);
+        }
+
+        internal static bool TryParseEngine(string name, HashSet<int> gamePids,
+            out int pid, out ulong luid)
+        {
+            pid = 0;
             luid = 0;
             Match m = EngineName.Match(name ?? "");
             if (!m.Success) return false;
-            int pid;
             uint high, low;
             if (!int.TryParse(m.Groups[1].Value, out pid) || !gamePids.Contains(pid) ||
                 !uint.TryParse(m.Groups[2].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out high) ||
@@ -346,17 +377,18 @@ namespace BannerlordFG.Setup
 
         private sealed class EngineCounter
         {
+            public int Pid;
             public ulong Luid;
             public IntPtr Handle;
         }
 
-        private static Dictionary<ulong, double> SampleGameRenderUsage(
+        private static List<RendererDecision.Activity> SampleGameRenderUsage(
             HashSet<int> gamePids, Action<string> log)
         {
             // WMI is used ONLY to enumerate instance names. On actual Windows
             // hybrid-GPU hardware its formatted UtilizationPercentage can be
             // zero despite 70%+ activity reported by Get-Counter (PDH).
-            var instances = new Dictionary<string, ulong>(StringComparer.OrdinalIgnoreCase);
+            var instances = new Dictionary<string, RendererDecision.Activity>(StringComparer.OrdinalIgnoreCase);
             using (var searcher = new ManagementObjectSearcher(
                 "SELECT Name FROM Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine"))
             {
@@ -368,17 +400,18 @@ namespace BannerlordFG.Setup
                         using (row)
                         {
                             string name = Convert.ToString(row["Name"]);
+                            int pid;
                             ulong luid;
-                            if (TryParseEngine(name, gamePids, out luid))
-                                instances[name] = luid;
+                            if (TryParseEngine(name, gamePids, out pid, out luid))
+                                instances[name] = new RendererDecision.Activity { Pid = pid, Luid = luid };
                         }
                     }
                 }
             }
-            var usage = new Dictionary<ulong, double>();
+            var usage = new List<RendererDecision.Activity>();
             if (instances.Count == 0)
             {
-                log("GPU render probe: no matching Bannerlord render engine instances; applying vendor fallback.");
+                log("GPU render probe: no matching Bannerlord render engine instances; checking for an unambiguous single-vendor fallback.");
                 return usage;
             }
 
@@ -398,11 +431,12 @@ namespace BannerlordFG.Setup
                     IntPtr counter;
                     if (PdhAddEnglishCounterW(query, path, IntPtr.Zero, out counter) == 0 &&
                         counter != IntPtr.Zero)
-                        counters.Add(new EngineCounter { Luid = instance.Value, Handle = counter });
+                        counters.Add(new EngineCounter { Pid = instance.Value.Pid,
+                            Luid = instance.Value.Luid, Handle = counter });
                 }
                 if (counters.Count == 0)
                 {
-                    log("GPU render probe: PDH had no readable GPU Engine counters; applying vendor fallback.");
+                    log("GPU render probe: PDH had no readable GPU Engine counters; checking for an unambiguous single-vendor fallback.");
                     return usage;
                 }
 
@@ -426,9 +460,8 @@ namespace BannerlordFG.Setup
                     if (double.IsNaN(percent) || double.IsInfinity(percent) || percent <= 0)
                         continue;
                     readable++;
-                    double previous;
-                    usage.TryGetValue(entry.Luid, out previous);
-                    usage[entry.Luid] = previous + percent;
+                    usage.Add(new RendererDecision.Activity { Pid = entry.Pid,
+                        Luid = entry.Luid, Percent = percent });
                 }
                 log("GPU render probe via PDH: " + instances.Count + " renderer instances, " +
                     counters.Count + " counters added, " + readable +
@@ -443,12 +476,19 @@ namespace BannerlordFG.Setup
 
         internal static string TryDetectActiveGpu(string gameBin, int originalPid, Action<string> log)
         {
+            Adapter adapter = TryDetectActiveAdapter(gameBin, originalPid, log, false);
+            return adapter == null || adapter.Vendor == "unknown" ? null : adapter.Vendor;
+        }
+
+        internal static Adapter TryDetectActiveAdapter(string gameBin, int originalPid,
+            Action<string> log, bool includeUnknownVendor = true)
+        {
             try
             {
                 var pids = FindGameProcessIds(gameBin, originalPid, log);
                 if (pids.Count == 0)
                 {
-                    log("GPU render probe unavailable: no verified Bannerlord renderer host is running; applying vendor fallback.");
+                    log("GPU render probe unavailable: no verified Bannerlord renderer host is running; checking for an unambiguous single-vendor fallback.");
                     return null;
                 }
                 Dictionary<ulong, Adapter> adapters = EnumerateDxgiAdapters();
@@ -457,38 +497,64 @@ namespace BannerlordFG.Setup
                     log("GPU render probe unavailable: DXGI did not expose a supported adapter LUID.");
                     return null;
                 }
-                // Use the same PDH performance counter backend that reports
-                // live GPU activity in Get-Counter, not WMI's unreliable zeros.
-                Dictionary<ulong, double> peak = SampleGameRenderUsage(pids, log);
-                var scored = peak.Where(x => adapters.ContainsKey(x.Key))
-                    .OrderByDescending(x => x.Value).ToArray();
-                // Idle menus and similar load on two adapters are insufficient
-                // evidence that either adapter is the game renderer.
-                if (scored.Length == 0 || scored[0].Value < 0.5 ||
-                    (scored.Length > 1 && scored[1].Value > 0.2 &&
-                     scored[0].Value < scored[1].Value * 2.0))
+                // Keep GPU Engine samples attached to their original PID. The
+                // old implementation merged all PIDs by GPU LUID, so an idle
+                // Intel launcher could outvote an NVIDIA/AMD game renderer.
+                List<RendererDecision.Activity> measured = SampleGameRenderUsage(pids, log);
+                var hosts = new List<RendererDecision.Host>();
+                foreach (int pid in pids)
                 {
-                    log("GPU render probe had no unambiguous 3D activity; applying vendor fallback.");
+                    try
+                    {
+                        using (Process process = Process.GetProcessById(pid))
+                        {
+                            // Revalidate the path after PDH sampling: a PID may
+                            // have exited and been reused during the 1s sample.
+                            if (!IsExpectedGameProcess(process, gameBin, log)) continue;
+                            bool marked = GameHostMarker.IsActive(gameBin, pid);
+                            hosts.Add(new RendererDecision.Host {
+                                Pid = pid,
+                                DirectGame = IsDirectGameProcess(process.ProcessName),
+                                ActiveModule = marked,
+                                // Avoid trusting a reused launcher PID. The
+                                // in-game caller must still own the live marker.
+                                InGameCaller = pid == originalPid && marked
+                            });
+                        }
+                    }
+                    catch (ArgumentException) { }
+                    catch (InvalidOperationException) { }
+                    catch (System.ComponentModel.Win32Exception) { }
+                }
+                var choice = RendererDecision.Select(hosts,
+                    measured.Where(x => adapters.ContainsKey(x.Luid) &&
+                        (includeUnknownVendor || adapters[x.Luid].Vendor != "unknown")));
+                if (choice == null)
+                {
+                    log("GPU render probe had no uniquely identified game-renderer PID/LUID; " +
+                        "checking for an unambiguous single-vendor fallback.");
                     return null;
                 }
-                Adapter actual = adapters[scored[0].Key];
-                log("Active Bannerlord 3D renderer detected via PDH GPU Engine PID and DXGI adapter LUID: " +
-                    actual.Description + " (" + actual.Vendor + ", peak " +
-                    scored[0].Value.ToString("F1", CultureInfo.InvariantCulture) + "%).");
-                return actual.Vendor;
+                Adapter actual = adapters[choice.Luid];
+                log("Active Bannerlord 3D renderer detected via PDH GPU Engine PID " +
+                    choice.Pid + " and DXGI adapter LUID 0x" + choice.Luid.ToString("X16") +
+                    ": " + actual.Description + " (" + actual.Vendor + ", activity " +
+                    choice.Percent.ToString("F1", CultureInfo.InvariantCulture) + "%).");
+                return actual;
             }
             catch (Exception ex)
             {
                 // GPU telemetry, WMI, the driver and DXGI are optional. Never
                 // fail installation just because this read-only probe fails.
-                log("GPU render probe unavailable (" + ex.GetType().Name + "); applying vendor fallback.");
+                log("GPU render probe unavailable (" + ex.GetType().Name + "); checking for an unambiguous single-vendor fallback.");
                 return null;
             }
         }
 
-        // Deliberate no-prompt fallback requested for mixed-GPU systems.
-        // Hardware preference is a heuristic, not a claim about actual rendering.
-        internal static string DetectByVendorPriority(Action<string> log)
+        // When process telemetry is unavailable, do NOT choose the most powerful
+        // GPU or a preferred vendor. Only a single installed vendor is safe.
+        // Multi-vendor systems require a verified game-renderer PID/LUID.
+        internal static string DetectOnlyUnambiguousVendor(Action<string> log)
         {
             using (var searcher = new ManagementObjectSearcher(
                 "SELECT Name, PNPDeviceID FROM Win32_VideoController"))
@@ -503,25 +569,32 @@ namespace BannerlordFG.Setup
                         {
                             string pnp = Convert.ToString(row["PNPDeviceID"]) ?? "";
                             string name = Convert.ToString(row["Name"]) ?? "";
-                            // PCI vendor IDs are more reliable than marketing names.
                             if (pnp.IndexOf("VEN_10DE", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                name.IndexOf("NVIDIA", StringComparison.OrdinalIgnoreCase) >= 0) vendors.Add("NVIDIA");
+                                name.IndexOf("NVIDIA", StringComparison.OrdinalIgnoreCase) >= 0)
+                                vendors.Add("NVIDIA");
                             else if (pnp.IndexOf("VEN_1002", StringComparison.OrdinalIgnoreCase) >= 0 ||
                                 name.IndexOf("Radeon", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                name.IndexOf("AMD", StringComparison.OrdinalIgnoreCase) >= 0) vendors.Add("AMD");
+                                name.IndexOf("AMD", StringComparison.OrdinalIgnoreCase) >= 0)
+                                vendors.Add("AMD");
                             else if (pnp.IndexOf("VEN_8086", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                name.IndexOf("Intel", StringComparison.OrdinalIgnoreCase) >= 0) vendors.Add("Intel");
+                                name.IndexOf("Intel", StringComparison.OrdinalIgnoreCase) >= 0)
+                                vendors.Add("Intel");
                         }
                     }
                 }
-                foreach (string preferred in new[] { "NVIDIA", "AMD", "Intel" })
-                    if (vendors.Contains(preferred))
-                    {
-                        log("GPU fallback selected " + preferred +
-                            " by NVIDIA > AMD > Intel priority (not a verified renderer identity).");
-                        return preferred;
-                    }
-                throw new InvalidOperationException("No supported NVIDIA, AMD or Intel GPU found through Win32_VideoController.");
+                if (vendors.Count == 1)
+                {
+                    string vendor = vendors.First();
+                    log("GPU fallback: single installed GPU vendor " + vendor +
+                        "; active renderer not directly verified.");
+                    return vendor;
+                }
+                if (vendors.Count > 1)
+                    throw new InvalidOperationException(
+                        "Multiple GPU vendors detected but the active game renderer could not be verified by PID and DXGI LUID. " +
+                        "No GPU was selected. Start Bannerlord on the intended GPU and retry installation.");
+                throw new InvalidOperationException(
+                    "No supported NVIDIA, AMD or Intel GPU found through Win32_VideoController.");
             }
         }
     }

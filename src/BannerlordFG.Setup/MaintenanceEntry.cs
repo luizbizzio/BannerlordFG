@@ -193,7 +193,7 @@ namespace BannerlordFG.Setup
                         OptiInstaller.ConfigureExistingManagedLiveControls(gameBin, AutoFirstRun.Log);
                         return 0;
                     case "--restore-legacy-fps":
-                        if (OptiInstaller.BannerlordIsRunning())
+                        if (OptiInstaller.BannerlordIsRunning(gameBin))
                             throw new InvalidOperationException("Close Bannerlord before legacy FPS restoration.");
                         FpsCounterCleanup.RestoreAfterUninstall(AutoFirstRun.Log);
                         return 0;

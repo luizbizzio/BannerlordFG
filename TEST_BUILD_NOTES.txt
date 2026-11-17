@@ -1,47 +1,63 @@
-BannerlordFG v1.1.2 CANDIDATE - TEST BUILD (SOURCE ONLY)
-=========================================================
+BannerlordFG v1.1.3 candidate: GPU / launcher / maintenance safety update
+======================================================================
 
-This package is based on BannerlordFG-main(7).zip.
-Do not publish as stable until Windows build and in-game tests pass.
+SOURCE BASE
+-----------
+BannerlordFG-v1.1.3-Install-GPU-BLSE-Source.zip (supplied previous build)
+No changes were pushed or published.
+OptiScaler pin updated to official nightly-20261116 (GitHub asset SHA256 verified).
+Existing nightly-20261112 manifests remain recognized for safe recovery/uninstall.
 
-Changes
+CHANGES
 -------
-- Pins official OptiScaler nightly-20261112, with published SHA-256.
-- Preserves known historical OptiScaler release/digest pairs for
-  manifest-owned safe recovery/uninstall.
-- Fixes WriteAtomic() when a state marker already exists.
-- Propagates installer errors to the CMD host instead of reporting exit 0.
-- Separates uninstall errors from install errors.
-- Detects uninstall CMD early exit without closing the running game.
-- Preserves detailed failure markers instead of replacing them with generic errors.
-- Does not change ReShade proxy handling or automatically enable LoadReshade.
+1. GPU Engine PDH readings remain attached to the verified PID and DXGI LUID.
+   A renderer selection needs a native game EXE, live BannerlordFG module
+   marker, or verified in-game caller. Launchers can be actual game hosts,
+   but unmarked idle launcher windows do not supply renderer evidence.
+   Competing adapter readings remain ambiguous; no NVIDIA>AMD>Intel guess.
+2. Recognize the original game EXEs, BLSE Launcher, LauncherEx, Standalone,
+   and Launcher.Native; always verify the actual executable's full path.
+3. A process-lifetime named mutex reports when the in-game module is loaded.
+   Installation and uninstallation wait for active game hosts and loaded
+   manifest-owned DLLs, not a launcher window alone. Inaccessible module
+   information fails closed. Per-file write checks protect against relaunch.
+4. Keep automatic OptiScaler runtime-only payload filtering, pinned
+   nightly-20261116 and official checksum; preserve upstream setup scripts
+   in the existing manual installer mode. Collision checks and hash-owned
+   uninstallation are unchanged, with safer rollback of created files.
+5. Leave Harmony SetConfig, FPS controls, ReShade and proxy loading intact.
+   README warns against renaming BannerlordFG-managed winmm.dll to dxgi.dll.
 
-Official asset:
-  OptiScaler_v10.0.0-pre1_20261112.7z
-  SHA-256 c32932ca340ffd605325101077b072209514ed0f110dc8b7ab92486eec1a5d93
+TESTING IN THIS ENVIRONMENT
+---------------------------
+Executed: python -m pytest -q tests
+Result: 265 passed.
 
-Build
------
-Run BUILD_WINDOWS.cmd on a Windows PC with Bannerlord installed and the
-Visual Studio 2022 build tools and .NET Framework targeting pack.
-The script should produce BannerlordFG-v1.1.2.zip.
+The existing Python tests inspect source contracts. They are NOT Windows
+integration tests. A separate executable C# policy/process test harness was
+added for real behavioural tests on Windows:
+  tests\RunWindowsPolicyTests.cmd
+Its scenarios cover Intel+NVIDIA, Intel+AMD, LauncherEx as renderer host,
+vanilla launcher as renderer host, independent launcher and game PIDs,
+ambiguous GPUs, idle launcher detection, full executable path validation,
+process lifetime markers, and managed DLL safety decisions.
 
-Manual checks BEFORE public release
+NOT RUN IN THIS ENVIRONMENT
+---------------------------
+- Windows policy harness (requires Windows and a .NET Framework C# compiler)
+- BUILD_WINDOWS.cmd (requires Visual Studio Build Tools, .NET Framework 4.7.2
+  targeting pack, and a real Bannerlord installation with TaleWorlds DLLs)
+- In-game BLSE, install/uninstall, and OptiScaler/Frame Generation testing
+
+WINDOWS VERIFICATION BEFORE RELEASE
 -----------------------------------
-1) Fresh install without ReShade: download -> verify -> extract -> restart -> XeFG.
-2) Fresh install with ReShade 6.8.0 Add-on already present, first with
-   ReShade's dxgi.dll and (separately, with backups) its d3d11.dll.
-   Do not overwrite any existing DLL.
-3) Uninstall through the menu after normal startup; verify the original
-   Bannerlord closes and only manifest-owned files are removed.
-4) Repeat uninstall after interrupted install, and inspect:
-   %LOCALAPPDATA%\BannerlordFG\BannerlordFG.log
-   %LOCALAPPDATA%\BannerlordFG\BannerlordFG.log
-   %LOCALAPPDATA%\BannerlordFG\BannerlordFG.log
-   %LOCALAPPDATA%\BannerlordFG\BannerlordFG.log
-5) Verify the normal installer does NOT overwrite existing ReShade files.
-6) Verify old v1.1.1/nightly-20261109 installation is still recognized for
-   safe uninstall, not silently upgraded to the newer nightly.
-7) Restore the game normally after any failed test.
-
-These static tests are NOT a successful Windows compilation or game run.
+1. Run tests\RunWindowsPolicyTests.cmd and confirm all cases pass.
+2. Build with BUILD_WINDOWS.cmd on the Bannerlord test PC.
+3. Test fresh install with extra setup scripts and Licenses files present.
+4. Test collision with foreign OptiScaler DLL and ReShade d3d11.dll.
+5. Test original and BLSE launcher EXEs, live game then idle launcher.
+6. Uninstall while the game is open (must block), then after game shutdown
+   (must remove owned files only). Verify modified INI backup and hashes.
+7. Test Intel/NVIDIA and Intel/AMD laptops; inspect PID, LUID, and GPU
+   vendor in %LOCALAPPDATA%\BannerlordFG\BannerlordFG.log.
+8. Verify OptiScaler nightly-20261116, XeFG, Performance menu and FPS counter.
